@@ -21,7 +21,7 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         try {
-            $perPage = (int)$request->get('per_page', 10); // Ép kiểu về số
+            $perPage = (int)$request->get('per_page', 100); // Ép kiểu về số
             $page = (int)$request->get('page', 1);
 
             // Thêm điều kiện sắp xếp rõ ràng
@@ -686,7 +686,7 @@ class ProductController extends Controller
     public function getProductsBySeller(Request $request, string $sellerId)
     {
         try {
-            $perPage = (int)$request->get('per_page', 10);
+            $perPage = (int)$request->get('per_page', 50);
 
             // Tạo query cơ bản
             $query = Product::query()

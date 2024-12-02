@@ -20,13 +20,13 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Lấy danh sách topic thành công',
+                'message' => 'Get the list of topics successfully',
                 'data' => $topics
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Có lỗi xảy ra khi lấy danh sách topic',
+                'message' => 'An error occurred while retrieving the topic list',
                 'error' => $e->getMessage()
             ], 500);
         }

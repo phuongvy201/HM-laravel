@@ -77,6 +77,18 @@ Route::middleware('auth:sanctum')->group(function () {
         // Product color and size routes
         Route::get('products/{id}/colors', [ProductController::class, 'getColors']);
         Route::get('products/{id}/sizes', [ProductController::class, 'getSizes']);
+        Route::post('pages', [PostController::class, 'createStaticPage']);
+        Route::post('/post/{id}/status', [PostController::class, 'updateStatus']);
+        Route::delete('/post/{id}', [PostController::class, 'destroy']);
+        Route::post('/page/{id}', [PostController::class, 'updateStaticPage']);
+        Route::get('/post/{id}', [PostController::class, 'getPageById']);
+
+
+
+        Route::get('/orders', [OrderController::class, 'getAllOrders']);
+
+
+
 
         Route::prefix('discounts')->group(function () {
             Route::get('/', [DiscountController::class, 'index']);
@@ -100,6 +112,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('discounts')->group(function () {
             Route::post('/{id}/update', [DiscountController::class, 'update']);
         });
+        Route::get('profile-shop/{sellerId}', [ProfileShopController::class, 'getShopInfo']);
+        Route::get('discounts/seller/{sellerId}', [DiscountController::class, 'getDiscountsBySeller']);
+        Route::get('orders', [OrderController::class, 'getOrdersBySeller']);
+        Route::get('posts', [PostController::class, 'getPostsByAuth']);
+        Route::post('post', [PostController::class, 'createPost']);
+        Route::post('post/{id}/update', [PostController::class, 'updatePost']);
+
 
 
         // Get products by seller
@@ -130,8 +149,8 @@ Route::get('/products/slug/{slug}', [ProductController::class, 'getProductDetail
 Route::get('/products/related/{productId}', [ProductController::class, 'getRelatedProducts']);
 Route::get('/products/same-seller/{productId}', [ProductController::class, 'getProductsBySameSeller']);
 Route::get('products/seller/{sellerId}', [ProductController::class, 'getProductsBySeller']);
-Route::get('discounts/seller/{sellerId}', [DiscountController::class, 'getDiscountsBySeller']);
-Route::get('profile-shop/{sellerId}', [ProfileShopController::class, 'getShopInfo']);
+
+
 Route::get('posts', [PostController::class, 'index']);
 Route::get('posts/latest', [PostController::class, 'getLatestPosts']);
 Route::get('categories/all-parent', [CategoryController::class, 'getAllParentCategories']);

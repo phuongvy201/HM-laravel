@@ -116,4 +116,53 @@ class OrderController extends Controller
             ], 500);
         }
     }
+    public function getAllOrders()
+    {
+        try {
+            // Lấy tất cả đơn hàng từ hệ thống
+            $orders = Order::with(['orderDetails.product', 'shipping', 'seller', 'customer']) // Load các mối quan hệ nếu cần
+                ->orderBy('created_at', 'desc') // Sắp xếp theo ngày tạo
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Lấy tất cả đơn hàng thành công',
+                'orders' => $orders
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi lấy tất cả đơn hàng',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function getOrdersBySeller()
+    {
+        try {
+            // Lấy seller_id từ người dùng đã đăng nhập
+            $seller_id = Auth::id();
+
+            // Kiểm tra xem người dùng có phải là seller không (nếu cần)
+            $user = Auth::user();
+
+            // Lấy tất cả đơn hàng của seller đang đăng nhập
+            $orders = Order::with(['orderDetails.product', 'shipping', 'customer']) // Load các mối quan hệ nếu cần
+                ->where('seller_id', $seller_id) // Lọc theo seller_id của người dùng đang đăng nhập
+                ->orderBy('created_at', 'desc') // Sắp xếp theo ngày tạo
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Retrieve all seller orders successfully',
+                'orders' => $orders
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while retrieving all seller orders',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

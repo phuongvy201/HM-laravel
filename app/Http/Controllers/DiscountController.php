@@ -18,7 +18,7 @@ class DiscountController extends Controller
     public function index(Request $request)
     {
         try {
-            $perPage = $request->input('per_page', 10); // Mặc định 10 item mỗi trang
+            $perPage = $request->input('per_page', 50); // Mặc định 10 item mỗi trang
 
             $productSales = ProductSale::select('product_sales.*', 'products.name as product_name', 'users.name as seller_name')
                 ->leftJoin('products', 'product_sales.product_id', '=', 'products.id')
@@ -69,7 +69,7 @@ class DiscountController extends Controller
     {
         try {
             // Lấy số lượng item mỗi trang, mặc định là 10
-            $perPage = $request->input('per_page', 10);
+            $perPage = $request->input('per_page', 50);
 
             // Truy vấn khuyến mãi của các sản phẩm của seller nhất định
             $productSales = ProductSale::select('product_sales.*', 'products.name as product_name', 'users.name as seller_name')
