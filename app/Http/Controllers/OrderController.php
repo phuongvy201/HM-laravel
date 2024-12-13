@@ -15,7 +15,6 @@ class OrderController extends Controller
     {
         // Validate dữ liệu đầu vào
         $request->validate([
-            'seller_id' => 'required|exists:users,id',
             'total_amount' => 'required|numeric|min:0',
             'order_details' => 'required|array|min:1',
             'order_details.*.product_id' => 'required|exists:products,id',
@@ -42,8 +41,8 @@ class OrderController extends Controller
 
             // Tạo order mới
             $order = Order::create([
-                'customer_id' => Auth::id(),
                 'seller_id' => $request->seller_id,
+                'customer_id' => $request->customer_id,
                 'total_amount' => $request->total_amount,
                 'status' => '1'
             ]);
@@ -112,6 +111,191 @@ class OrderController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Có lỗi xảy ra khi lấy danh sách đơn hàng',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function getAllOrders()
+    {
+        try {
+            // Lấy tất cả đơn hàng kèm seller và shipping
+            $orders = Order::with([
+                'seller:id,name,email', // Lấy thông tin seller
+                'shipping:id,order_id,shipping_cost', // Lấy thông tin shipping
+                'orderDetails.product:id,name,image' // Lấy thông tin sản phẩm từ OrderDetail
+            ])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // Chuẩn bị dữ liệu trả về
+            $ordersWithDetails = $orders->map(function ($order) {
+                return [
+                    'order_id' => $order->id,
+                    'customer_id' => $order->customer_id,
+                    'created_at' => $order->created_at,
+                    'total_amount' => $order->total_amount,
+                    'status' => $order->status,
+                    'seller' => [
+                        'seller_id' => $order->seller->id ?? null,
+                        'seller_name' => $order->seller->name ?? null,
+                        'seller_email' => $order->seller->email ?? null,
+                    ],
+                    'shipping_cost' => $order->shipping->shipping_cost ?? 0,
+                    'details' => $order->orderDetails->map(function ($detail) {
+                        return [
+                            'product_id' => $detail->product_id,
+                            'product_name' => optional($detail->product)->name,
+                            'image' => optional($detail->product)->image,
+                            'quantity' => $detail->quantity,
+                            'price' => $detail->price,
+                            'attributes' => $detail->attributes,
+                            'status' => $detail->status,
+                        ];
+                    })
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Lấy danh sách đơn hàng thành công',
+                'data' => $ordersWithDetails
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Có lỗi xảy ra khi lấy danh sách đơn hàng',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getSellerOrders()
+    {
+        try {
+            // Lấy tất cả đơn hàng của seller đang đăng nhập
+            $orders = OrderDetail::with([
+                'product:id,name,seller_id,image', // Lấy thông tin sản phẩm
+            ])
+                ->whereHas('product', function ($query) {
+                    // Lọc sản phẩm theo seller đang đăng nhập
+                    $query->where('seller_id', Auth::id());
+                })
+                ->orderBy('order_id', 'desc') // Sắp xếp theo thời gian tạo đơn hàng
+                ->get();
+
+            // Gom nhóm chi tiết đơn hàng theo order_id
+            $groupedByOrder = $orders->groupBy('order_id')->map(function ($details) {
+                $order = $details->first()->order; // Lấy thông tin đơn hàng
+                $order->details = $details->map(function ($detail) {
+                    return [
+                        'product_id' => $detail->product_id,
+                        'quantity' => $detail->quantity,
+                        'price' => $detail->price,
+                        'attributes' => $detail->attributes,
+                        'product_name' => $detail->product->name,
+                        'image' => $detail->product->image,
+                        'status' => $detail->status, // Thêm trạng thái của chi tiết đơn hàng
+                    ];
+                });
+
+                return $order;
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Lấy danh sách đơn hàng của seller thành công',
+                'data' => $groupedByOrder->values() // Trả về danh sách đã gom nhóm theo order_id
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Có lỗi xảy ra khi lấy danh sách đơn hàng của seller',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function getOrderDetails($orderId)
+    {
+        try {
+            // Lấy thông tin đơn hàng kèm theo chi tiết và shipping
+            $order = Order::with([
+                'orderDetails.product', // Lấy thông tin sản phẩm
+                'shipping',             // Lấy thông tin shipping
+                'customer'              // Lấy thông tin khách hàng
+            ])->findOrFail($orderId);
+
+            // Map dữ liệu chi tiết đơn hàng
+            $orderDetails = $order->orderDetails->map(function ($detail) {
+                return [
+                    'product_id' => $detail->product_id,
+                    'product_name' => $detail->product->name,
+                    'quantity' => $detail->quantity,
+                    'price' => $detail->price,
+                    'attributes' => $detail->attributes,
+                    'image' => $detail->product->image,
+                    'status' => $detail->status,
+                ];
+            });
+
+            // Trả về thông tin đơn hàng và các chi tiết liên quan
+            return response()->json([
+                'success' => true,
+                'message' => 'Lấy thông tin chi tiết đơn hàng thành công',
+                'data' => [
+                    'order' => [
+                        'order_id' => $order->id,
+                        'created_at' => $order->created_at,
+
+                        'shipping' => [
+                            'shipping_method' => $order->shipping->shipping_method,
+                            'tracking_number' => $order->shipping->tracking_number,
+                            'id' => $order->shipping->id,
+                            'first_name' => $order->shipping->first_name,
+                            'last_name' => $order->shipping->last_name,
+                            'phone' => $order->shipping->phone,
+                            'address' => $order->shipping->address,
+                            'city' => $order->shipping->city,
+                            'country' => $order->shipping->country,
+                            'zip_code' => $order->shipping->zip_code,
+                            'shipping_cost' => $order->shipping->shipping_cost,
+                            'notes' => $order->shipping->shipping_notes,
+                        ],
+                        'total_amount' => $order->total_amount,
+                    ],
+                    'order_details' => $orderDetails,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi lấy thông tin chi tiết đơn hàng',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function updateStatus(Request $request, $orderId)
+    {
+        // Validate dữ liệu đầu vào
+        $request->validate([
+            'status' => 'required|integer|in:1,2,3,4,5', // Trạng thái phải là một trong các giá trị 1, 2, 3, 4, 5
+        ]);
+
+        try {
+            // Tìm đơn hàng cần cập nhật
+            $order = Order::findOrFail($orderId);
+
+            // Cập nhật trạng thái của đơn hàng
+            $order->status = $request->status;
+            $order->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cập nhật trạng thái đơn hàng thành công',
+                'order' => $order
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi cập nhật trạng thái đơn hàng',
                 'error' => $e->getMessage()
             ], 500);
         }

@@ -12,31 +12,48 @@ class PaymentTestService
     public function findAvailableGateway($amount)
     {
         try {
-            // Tìm gateway phù hợp với số tiền giao dịch
-            $gateway = PaymentGatewayTest::where('is_active', true)
-                ->where(function ($query) use ($amount) {
-                    $query->whereRaw('(daily_limit - current_daily_amount) >= ?', [$amount])
-                        ->orWhere(function ($q) {
-                            $q->whereDate('last_reset_at', '<', now()->startOfDay());
-                        });
-                })
-                ->orderBy('current_daily_amount') // Ưu tiên gateway có số dư nhiều nhất
+            // Reset giới hạn hàng ngày lúc 00:00
+            $this->resetDailyLimits();
+
+            // Tìm cổng đầu tiên
+            $primaryGateway = PaymentGatewayTest::where('is_active', true)
+                ->orderBy('id') // Lấy cổng đầu tiên
                 ->first();
 
-            // Reset số tiền nếu sang ngày mới
-            if ($gateway && $gateway->last_reset_at < now()->startOfDay()) {
-                $gateway->update([
-                    'current_daily_amount' => 0,
-                    'last_reset_at' => now()
-                ]);
+            // Kiểm tra nếu cổng đầu tiên đủ hạn mức để thanh toán
+            if ($primaryGateway && ($primaryGateway->daily_limit - $primaryGateway->current_daily_amount) >= $amount) {
+                return $primaryGateway;
             }
 
-            return $gateway;
+            // Nếu không đủ hạn mức, tìm cổng khác
+            $alternativeGateway = PaymentGatewayTest::where('is_active', true)
+                ->whereRaw('(daily_limit - current_daily_amount) >= ?', [$amount])
+                ->where('id', '>', $primaryGateway->id) // Chỉ lấy cổng sau cổng đầu tiên
+                ->orderBy('id') // Lấy cổng tiếp theo
+                ->first();
+
+            // Sau khi thanh toán cổng khác, kiểm tra lại cổng đầu tiên
+            if ($alternativeGateway) {
+                return $alternativeGateway;
+            }
+
+            return $primaryGateway; // Nếu không có cổng khác, trả về cổng đầu tiên
         } catch (\Exception $e) {
             Log::error('Find Gateway Error: ' . $e->getMessage());
             return null;
         }
     }
+
+    private function resetDailyLimits()
+    {
+        PaymentGatewayTest::whereDate('last_reset_at', '<', now()->startOfDay())
+            ->update([
+                'current_daily_amount' => 0,
+                'daily_limit' => 3500,
+                'last_reset_at' => now(),
+            ]);
+    }
+
 
     public function updateGatewayAmount($gatewayId, $amount)
     {

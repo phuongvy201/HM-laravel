@@ -23,11 +23,11 @@ class Order extends Model
     {
         return $this->belongsTo(User::class, 'customer_id');
     }
-
     public function seller()
     {
         return $this->belongsTo(User::class, 'seller_id');
     }
+
 
     public function orderDetails()
     {
@@ -37,6 +37,4 @@ class Order extends Model
     {
         return $this->hasOne(Shipping::class);
     }
-    
-
 }

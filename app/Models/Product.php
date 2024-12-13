@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\ProductSale;
+use Illuminate\Support\Facades\Auth;
 
 class Product extends Model
 {
@@ -51,5 +52,20 @@ class Product extends Model
     public function profileShop()
     {
         return $this->hasOne(ProfileShop::class, 'owner_id', 'seller_id');
+    }
+    public static function searchBySeller($id = null, $name = null, $createdFrom = null, $createdTo = null)
+    {
+        $query = self::query();
+        $query->where('seller_id', Auth::id());
+        if ($id !== null) {
+            $query->where('id', $id);
+        }
+        if ($name !== null) {
+            $query->where('name', 'like', '%' . $name . '%');
+        }
+        if ($createdFrom !== null && $createdTo !== null) {
+            $query->whereBetween('created_at', [$createdFrom, $createdTo]);
+        }
+        return $query->get();
     }
 }
