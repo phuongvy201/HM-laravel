@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\VerificationCodeMail;
 use App\Models\User;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -23,8 +26,10 @@ class AuthController extends Controller
                 'phone_number' => 'nullable|string',
                 'address' => 'nullable|string',
                 'status' => 'nullable|boolean',
-                'gender' => 'nullable|string'
+                'gender' => 'nullable|string',
             ]);
+
+            $verificationCode = rand(100000, 999999);
 
             $user = User::create([
                 'name' => $validatedData['name'],
@@ -35,33 +40,62 @@ class AuthController extends Controller
                 'phone_number' => $validatedData['phone_number'] ?? null,
                 'address' => $validatedData['address'] ?? null,
                 'status' => $validatedData['status'] ?? true,
-                'gender' => $validatedData['gender'] ?? null
+                'gender' => $validatedData['gender'] ?? null,
+                'verification_code' => $verificationCode,
             ]);
 
-            $token = $user->createToken('auth_token')->plainTextToken;
+            // Generate token after user creation
+            $abilities = $user->role === 'admin' ? ['admin'] : ['user'];
+            $token = $user->createToken('auth_token', $abilities)->plainTextToken;
+
+            // Send verification email
+            Mail::to($user->email)->send(new VerificationCodeMail($verificationCode));
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Registration successful',
+                'message' => 'Registration successful. Please check your email for verification code.',
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user
+                'user' => $user,
             ]);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Invalid data',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'An error occurred',
-                'errors' => $e->getMessage()
+                'errors' => $e->getMessage(),
             ], 500);
         }
     }
 
+    public function verifyEmail(Request $request)
+    {
+        $validatedData = $request->validate([
+            'email' => 'required|string|email|max:255',
+            'verification_code' => 'required|numeric',
+        ]);
+        $user = User::where(
+            'email',
+            $validatedData['email']
+        )->where('verification_code', $validatedData['verification_code'])->first();
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid verification code or email.',
+            ], 422);
+        }
+        $user->email_verified_at = now();
+        $user->save();
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Email verified successfully.',
+        ], 200);
+    }
     public function login(Request $request)
     {
         $validatedData = $request->validate([

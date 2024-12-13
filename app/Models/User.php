@@ -20,7 +20,8 @@ class User extends Authenticatable
         'phone_number',
         'address',
         'status',
-        'gender'
+        'gender',
+        'verification_code'
     ];
 
     protected $hidden = [
@@ -49,5 +50,9 @@ class User extends Authenticatable
     public function scopeCustomers($query)
     {
         return $query->where('role', 'customer');
+    }
+    public function profileShop()
+    {
+        return $this->hasOne(ProfileShop::class, 'owner_id');
     }
 }

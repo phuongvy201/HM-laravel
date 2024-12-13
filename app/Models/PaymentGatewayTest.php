@@ -13,7 +13,7 @@ class PaymentGatewayTest extends Model
         'sandbox_client_id',
         'sandbox_client_secret',
         'daily_limit',
-        'current_daily_amount',
+        'current_daily_amount', 
         'is_active',
         'last_reset_at'
     ];

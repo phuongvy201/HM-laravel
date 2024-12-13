@@ -1,10 +1,14 @@
 <?php
 
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DiscountController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
+use App\Http\Controllers\Controller;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\FollowController;
+use App\Http\Controllers\MailController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PostController;
 use Illuminate\Http\Request;
@@ -20,12 +24,14 @@ use App\Http\Controllers\USPSController;
 use App\Http\Controllers\USPSPickupController;
 use App\Http\Controllers\USPSPriceController;
 use App\Http\Controllers\WishlistController;
+use App\Models\Product;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register'])->name('register');
+Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
 Route::get('/test', function () {
     return response()->json(['message' => 'API works!']);
 });
@@ -69,7 +75,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/customers/{id}', [CustomerController::class, 'destroy']);
         Route::get('/customers/{id}', [CustomerController::class, 'show']);
 
-        Route::post('products', [ProductController::class, 'store']);
+
         Route::get('products/{id}', [ProductController::class, 'show']);
         Route::delete('products/{id}', [ProductController::class, 'destroy']);
         Route::get('products/seller/{sellerId}', [ProductController::class, 'getProductsBySeller']);
@@ -96,14 +102,29 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{id}', [DiscountController::class, 'show']);
             Route::post('/{id}/status', [DiscountController::class, 'updateStatus']);
         });
+        Route::get('/orders', [OrderController::class, 'getAllOrders']);
+        Route::post('pages', [PostController::class, 'createStaticPage']);
+        Route::post('/post/{id}/status', [PostController::class, 'updateStatus']);
+        Route::delete('/post/{id}', [PostController::class, 'destroy']);
+        Route::post('/page/{id}', [PostController::class, 'updateStaticPage']);
+        Route::get('/post/{id}', [PostController::class, 'getPageById']);
+        Route::get('posts', [PostController::class, 'index']);
+        Route::post('/profileshop', [ProfileShopController::class, 'create']);
+        Route::get('/sellers-without-profile-shop', [ProfileShopController::class, 'getSellersWithoutProfileShop']);
+
+        Route::post('/send-email', [AdminController::class, 'sendCustomEmail'])->name('admin.sendCustomEmail');
+
 
 
         // Get products by seller
 
     });
     Route::prefix('seller')->group(function () {
+        Route::post('products', [ProductController::class, 'store']);
         Route::post('products/{id}/update', [ProductController::class, 'update']);
         Route::get('products/seller/{sellerId}', [ProductController::class, 'getProductsBySeller']);
+        Route::get('orders', [OrderController::class, 'getSellerOrders']);
+        Route::post('profile', [ProfileShopController::class, 'createOrUpdateProfile']);
 
         // Product color and size routes
         Route::get('products/{id}/colors', [ProductController::class, 'getColors']);
@@ -111,6 +132,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::prefix('discounts')->group(function () {
             Route::post('/{id}/update', [DiscountController::class, 'update']);
+            Route::get('seller/{sellerId}', [DiscountController::class, 'getDiscountsBySeller']);
         });
         Route::get('profile-shop/{sellerId}', [ProfileShopController::class, 'getShopInfo']);
         Route::get('discounts/seller/{sellerId}', [DiscountController::class, 'getDiscountsBySeller']);
@@ -121,8 +143,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
+        Route::get('/orders/{orderId}', [OrderController::class, 'getOrderDetails']);
+        Route::get('orders', [OrderController::class, 'getSellerOrders']);
+        Route::get('posts', [PostController::class, 'getPostsByAuth']);
+        Route::post('post', [PostController::class, 'createPost']);
+        Route::post('post/{id}/update', [PostController::class, 'updatePost']);
         // Get products by seller
-
+        Route::post('/shippings/{id}/update-tracking', [ShippingController::class, 'updateTracking']);
+        Route::post('/orders/{orderId}/status', [OrderController::class, 'updateStatus']);
+        Route::get('/product/search', [ProductController::class, 'searchBySeller']);
+        Route::get('check-profile', [ProfileShopController::class, 'checkProfileExists']);
+        Route::get('profile', [ProfileShopController::class, 'getProfileShopInfo']);
     });
 
 
@@ -134,12 +165,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/customer', [CustomerController::class, 'getCurrentCustomer']);
     Route::post('/profile', [CustomerController::class, 'updateCurrentUser']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
-    Route::post('/orders', [OrderController::class, 'store']);
+
     Route::delete('/cart', [CartController::class, 'clearCart']);
     Route::get('/orders', [OrderController::class, 'getCustomerOrders']);
     Route::get('/shippings', [ShippingController::class, 'index']);
     Route::post('/shippings', [ShippingController::class, 'store']);
+
+    Route::post('/follow', [FollowController::class, 'follow']);
+    Route::post('/unfollow', [FollowController::class, 'unfollow']);
+    Route::get('/check-follow', [FollowController::class, 'checkFollow']);
 });
+Route::get('/search', [ProductController::class, 'searchBySeller']);
+Route::get('profile-shop/{sellerId}', [ProfileShopController::class, 'getShopInfo']);
+Route::post('/orders', [OrderController::class, 'store']);
 Route::get('/products/new', [ProductController::class, 'getNewProducts']);
 Route::get('/products/best-selling', [ProductController::class, 'getBestSellingProducts']);
 
@@ -149,6 +187,10 @@ Route::get('/products/slug/{slug}', [ProductController::class, 'getProductDetail
 Route::get('/products/related/{productId}', [ProductController::class, 'getRelatedProducts']);
 Route::get('/products/same-seller/{productId}', [ProductController::class, 'getProductsBySameSeller']);
 Route::get('products/seller/{sellerId}', [ProductController::class, 'getProductsBySeller']);
+
+
+
+Route::get('discounts/seller/{sellerId}', [DiscountController::class, 'getDiscountsBySeller']);
 
 
 Route::get('posts', [PostController::class, 'index']);
@@ -168,6 +210,8 @@ Route::get('wishlist', [WishlistController::class, 'index']);
 Route::get('products/shopprofile/{sellerId}', [ProfileShopController::class, 'getShopProducts']);
 Route::get('products', [ProductController::class, 'getAllProducts']);
 Route::get('products/search', [ProductController::class, 'search']);
+Route::post('calculateShippingCost', [ShippingCategoryController::class, 'calculateShippingCost']);
+
 Route::prefix('usps')->group(function () {
     Route::post('validate-address', [USPSController::class, 'validateAddress']);
     Route::post('pickup', [USPSPickupController::class, 'createPickup']);
@@ -190,3 +234,4 @@ Route::prefix('payment-test')->group(function () {
     Route::post('/reset-daily-limits', [TestPaymentController::class, 'resetDailyLimits'])
         ->name('payment.test.reset-daily-limits');
 });
+Route::post('send-mail', [MailController::class, 'sendMail']);

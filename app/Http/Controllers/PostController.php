@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -17,8 +16,10 @@ class PostController extends Controller
     public function index()
     {
         $posts = Post::with(['user:id,name,avatar', 'topic:id,name,slug'])
-            ->where('status', 1)
-            ->where('type', 'post')
+
+            ->where('status', 1)  // Điều kiện status = 1
+            ->where('type', 'post')  // Điều kiện type = 'post'
+
             ->orderBy('created_at', 'desc')
             ->get();
 

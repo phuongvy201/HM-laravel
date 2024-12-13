@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ShippingCategory;
 use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ShippingCategoryController extends Controller
 {
@@ -30,13 +31,12 @@ class ShippingCategoryController extends Controller
                 $shippingCategory = ShippingCategory::create($validated);
                 $message = 'Đã thêm giá vận chuyển thành công';
             }
-            
+
             return response()->json([
                 'success' => true,
                 'message' => $message,
                 'data' => $shippingCategory
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -46,13 +46,13 @@ class ShippingCategoryController extends Controller
         }
     }
 
-   
+
 
     public function getRootCategories()
     {
         try {
             $categories = Category::getRootCategoriesWithShipping();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $categories
@@ -62,6 +62,28 @@ class ShippingCategoryController extends Controller
                 'success' => false,
                 'message' => 'Có lỗi xảy ra khi lấy danh sách danh mục',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function calculateShippingCost(Request $request)
+    {
+        try {
+
+            // Lấy dữ liệu items từ request
+            $items = $request->items;
+
+            // Tính phí vận chuyển
+            $shippingCost = ShippingCategory::calculateTotalShipping($items);
+
+            return response()->json([
+                'success' => true,
+                'shipping_cost' => $shippingCost
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in calculateShippingCost: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi tính phí vận chuyển'
             ], 500);
         }
     }

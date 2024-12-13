@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Shipping;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
 class ShippingController extends Controller
@@ -150,26 +152,47 @@ class ShippingController extends Controller
     /**
      * Cập nhật tracking number
      */
-    public function updateTracking(Request $request, Shipping $shipping)
+    public function updateTracking(Request $request, $id)
     {
-        $validator = Validator::make($request->all(), [
-            'tracking_number' => 'required|string'
+        // Log toàn bộ request
+        Log::info('Request Data:', $request->all());
+
+        // Validate request
+        $request->validate([
+            'tracking_number' => 'required|string|max:255',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], Response::HTTP_BAD_REQUEST);
+        // Tìm Shipping record
+        $shipping = Shipping::find($id);
+
+        if (!$shipping) {
+            Log::error('Shipping record not found for ID: ' . $id);
+            return response()->json(['message' => 'Shipping record not found'], 404);
         }
 
-        $shipping->update([
-            'tracking_number' => $request->tracking_number
-        ]);
+        // Cập nhật tracking number
+        $shipping->tracking_number = $request->tracking_number;
+        $shipping->save();
+
+        // Log kết quả lưu
+        Log::info('Updated Shipping:', $shipping->toArray());
+
+        // Gửi email thông báo mã tracking
+        try {
+            Mail::to('recipient@example.com')->send(new \App\Mail\TrackingMail($request->tracking_number));
+            Log::info('Email sent successfully.');
+        } catch (\Exception $e) {
+            Log::error('Failed to send email: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Tracking number updated but failed to send email',
+                'data' => $shipping,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
 
         return response()->json([
-            'success' => true,
-            'data' => $shipping
-        ]);
+            'message' => 'Tracking number updated and email sent successfully',
+            'data' => $shipping,
+        ], 200);
     }
 }
