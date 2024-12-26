@@ -170,7 +170,12 @@ class ShippingController extends Controller
             return response()->json(['message' => 'Shipping record not found'], 404);
         }
 
-        // Cập nhật tracking number
+        // Kiểm tra và cập nhật hoặc thêm mới tracking number
+        if ($shipping->tracking_number) {
+            Log::info('Updating existing tracking number for Shipping ID: ' . $id);
+        } else {
+            Log::info('Adding new tracking number for Shipping ID: ' . $id);
+        }
         $shipping->tracking_number = $request->tracking_number;
         $shipping->save();
 

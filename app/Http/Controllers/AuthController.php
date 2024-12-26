@@ -8,6 +8,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
@@ -36,7 +37,7 @@ class AuthController extends Controller
                 'email' => $validatedData['email'],
                 'password' => Hash::make($validatedData['password']),
                 'role' => $validatedData['role'],
-                'avatar' => $validatedData['avatar'] ?? 'images/users/—Pngtree—cartoon hand drawn default avatar_7127563.png',
+                'avatar' => $validatedData['avatar'] ?? 'images/users/cat.png',
                 'phone_number' => $validatedData['phone_number'] ?? null,
                 'address' => $validatedData['address'] ?? null,
                 'status' => $validatedData['status'] ?? true,
@@ -59,12 +60,16 @@ class AuthController extends Controller
                 'user' => $user,
             ]);
         } catch (ValidationException $e) {
+            // Log lỗi validation
+            Log::error('Validation error during registration: ', $e->errors());
             return response()->json([
                 'status' => 'error',
                 'message' => 'Invalid data',
                 'errors' => $e->errors(),
             ], 422);
         } catch (Exception $e) {
+            // Log lỗi chung
+            Log::error('Error during registration: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
                 'message' => 'An error occurred',

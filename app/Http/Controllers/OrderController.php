@@ -42,7 +42,7 @@ class OrderController extends Controller
 
             // Tạo order mới
             $order = Order::create([
-                'customer_id' => Auth::id(),
+                'customer_id' => $request->customer_id,
                 'seller_id' => $request->seller_id,
                 'total_amount' => $request->total_amount,
                 'status' => '1'
@@ -161,6 +161,26 @@ class OrderController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while retrieving all seller orders',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function getOrderDetail($orderId)
+    {
+        try {
+            // Lấy thông tin đơn hàng cùng với chi tiết đơn hàng, thông tin vận chuyển và sản phẩm
+            $order = Order::with(['orderDetails.product', 'shipping']) // Thêm 'product' vào mối quan hệ orderDetails
+                ->findOrFail($orderId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Lấy thông tin chi tiết đơn hàng thành công',
+                'order' => $order
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi lấy thông tin chi tiết đơn hàng',
                 'error' => $e->getMessage()
             ], 500);
         }

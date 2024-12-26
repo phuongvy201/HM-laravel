@@ -31,4 +31,66 @@ class TopicController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Thêm một topic mới
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function addTopic(Request $request): JsonResponse
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'status' => 'required|boolean',
+        ]);
+
+        try {
+            $topic = Topic::addTopic($request->all()); // Gọi hàm thêm topic từ model
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Topic đã được thêm thành công',
+                'data' => $topic
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi thêm topic',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    /**
+     * Xóa một topic
+     *
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function deleteTopic(int $id): JsonResponse
+    {
+        try {
+            $topic = Topic::find($id);
+
+            if (!$topic) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Topic không tồn tại'
+                ], 404);
+            }
+
+            $topic->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Topic đã được xóa thành công'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi xóa topic',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
