@@ -14,7 +14,7 @@ class TemplateController extends Controller
     public function index()
     {
         // Lấy danh sách templates cùng với các template values
-        $templates = Template::with('templateValues')->get();
+        $templates = Template::with('templateValues')->orderBy('created_at', 'desc')->get();
 
         $groupedTemplates = [];
 
@@ -63,7 +63,12 @@ class TemplateController extends Controller
 
         // Xử lý hình ảnh
         $mainImagePath = null;
-        if ($request->hasFile('image')) {
+
+        // Kiểm tra nếu có URL hình ảnh
+        if ($request->input('image') && filter_var($request->input('image'), FILTER_VALIDATE_URL)) {
+            // Nếu có URL hợp lệ, lưu thẳng URL vào cơ sở dữ liệu
+            $mainImagePath = $request->input('image');
+        } elseif ($request->hasFile('image')) { // Kiểm tra nếu có file hình ảnh được tải lên
             $mainImage = $request->file('image');
             $mainImageName = time() . '_' . $mainImage->getClientOriginalName();
             $mainImage->move(public_path('images/templates'), $mainImageName);
@@ -86,14 +91,16 @@ class TemplateController extends Controller
             foreach ($request->template_values as $value) {
                 // Xử lý hình ảnh cho từng template value
                 if (isset($value['image_url'])) {
-                    $valueImagePath = null;
-                    if ($value['image_url']) {
+                    if (filter_var($value['image_url'], FILTER_VALIDATE_URL)) {
+                        // Nếu là URL hợp lệ, lưu thẳng URL vào cơ sở dữ liệu
+                        $value['image_url'] = $value['image_url'];
+                    } elseif ($value['image_url']) {
+                        // Nếu là file hình ảnh được tải lên
                         $valueImage = $value['image_url'];
                         $valueImageName = time() . '_' . $valueImage->getClientOriginalName();
                         $valueImage->move(public_path('images/template_values'), $valueImageName);
-                        $valueImagePath = 'images/template_values/' . $valueImageName;
+                        $value['image_url'] = 'images/template_values/' . $valueImageName;
                     }
-                    $value['image_url'] = $valueImagePath;
                 }
                 $template->templateValues()->create($value);
             }
@@ -125,12 +132,9 @@ class TemplateController extends Controller
         $template->description = $request->input('description', $template->description);
         $template->category_id = $request->input('category_id', $template->category_id);
 
-        // Xử lý cập nhật hình ảnh chính nếu có
-        if ($request->hasFile('image')) {
-            $mainImage = $request->file('image');
-            $mainImageName = time() . '_' . $mainImage->getClientOriginalName();
-            $mainImage->move(public_path('images/templates'), $mainImageName);
-            $template->image = 'images/templates/' . $mainImageName;
+        // Xử lý cập nhật hình ảnh chính nếu có URL
+        if ($request->has('image')) {
+            $template->image = $request->input('image');
         }
 
         $template->save();
@@ -144,12 +148,9 @@ class TemplateController extends Controller
                     $value->additional_price = $valueData['additional_price'] ?? $value->additional_price;
                     $value->value_color = $valueData['value_color'] ?? $value->value_color;
 
-                    // Xử lý cập nhật hình ảnh cho từng template value nếu có
+                    // Xử lý cập nhật hình ảnh cho từng template value nếu có URL
                     if (isset($valueData['image_url']) && $valueData['image_url']) {
-                        $valueImage = $valueData['image_url'];
-                        $valueImageName = time() . '_' . $valueImage->getClientOriginalName();
-                        $valueImage->move(public_path('images/template_values'), $valueImageName);
-                        $value->image_url = 'images/template_values/' . $valueImageName;
+                        $value->image_url = $valueData['image_url'];
                     }
 
                     $value->save();

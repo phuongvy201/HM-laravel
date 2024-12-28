@@ -24,6 +24,10 @@ class Product extends Model
         'updated_by',
         'stock'
     ];
+    public function type()
+    {
+        return $this->belongsTo(Type::class, 'type_id');
+    }
     public function discounts()
     {
         return $this->hasMany(ProductSale::class, 'product_id', 'id')
@@ -52,6 +56,10 @@ class Product extends Model
     public function profileShop()
     {
         return $this->hasOne(ProfileShop::class, 'owner_id', 'seller_id');
+    }
+    public function types()
+    {
+        return $this->hasMany(Type::class);
     }
     public static function searchBySeller($id = null, $name = null, $createdFrom = null, $createdTo = null)
     {

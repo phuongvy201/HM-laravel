@@ -117,6 +117,15 @@ class AuthController extends Controller
 
         $user = User::where('email', $validatedData['email'])->firstOrFail();
 
+        // Check if the user is already logged in from another device
+        if ($user->tokens()->count() > 0) {
+            // Notify that the user is logged in from another device
+            return response()->json([
+                'status' => 'warning',
+                'message' => 'Logged in from another device. Logging out previous sessions.',
+            ], 200);
+        }
+
         // Delete old token if exists
         $user->tokens()->delete();
 
@@ -192,6 +201,22 @@ class AuthController extends Controller
                 'message' => 'An error occurred',
                 'errors' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    public function checkSession(Request $request)
+    {
+        if (Auth::check()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Session is active',
+                'user' => Auth::user()
+            ], 200);
+        } else {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No active session'
+            ], 401);
         }
     }
 }

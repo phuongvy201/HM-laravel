@@ -30,7 +30,7 @@ use App\Http\Controllers\WishlistController;
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register'])->name('register');
 Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
-
+Route::get('/check-session', [AuthController::class, 'checkSession']);
 
 Route::get('/test', function () {
     return response()->json(['message' => 'API works!']);
@@ -76,7 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/customers/{id}', [CustomerController::class, 'show']);
 
 
-        Route::get('products/{id}', [ProductController::class, 'show']);
+
         Route::delete('products/{id}', [ProductController::class, 'destroy']);
         Route::get('products/seller/{sellerId}', [ProductController::class, 'getProductsBySeller']);
 
@@ -132,6 +132,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // Product color and size routes
         Route::get('products/{id}/colors', [ProductController::class, 'getColors']);
         Route::get('products/{id}/sizes', [ProductController::class, 'getSizes']);
+        Route::get('products/{id}/types', [ProductController::class, 'getTypes']);
+        Route::get('products/{id}', [ProductController::class, 'show']);
 
         Route::prefix('discounts')->group(function () {
             Route::post('/{id}/update', [DiscountController::class, 'update']);
@@ -142,6 +144,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('posts', [PostController::class, 'getPostsByAuth']);
         Route::post('post', [PostController::class, 'createPost']);
         Route::post('post/{id}/update', [PostController::class, 'updatePost']);
+        Route::get('products/types/{productId}', [ProductController::class, 'getTypes']);
 
 
 
@@ -163,6 +166,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/templates/{id}', [TemplateController::class, 'update']);
         Route::delete('/templates/{id}', [TemplateController::class, 'destroy']);
         Route::get('/templates/{id}', [TemplateController::class, 'show']);
+        Route::post('/products/add-by-template', [ProductController::class, 'addProductByTemplate']);
     });
 
 
@@ -183,12 +187,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/follow', [FollowController::class, 'follow']);
     Route::post('/unfollow', [FollowController::class, 'unfollow']);
     Route::get('/check-follow', [FollowController::class, 'checkFollow']);
+    Route::get('products/{id}', [ProductController::class, 'show']);
 });
-Route::get('/search', [ProductController::class, 'search']);
+
 Route::get('profile-shop/{sellerId}', [ProfileShopController::class, 'getShopInfo']);
 Route::post('/orders', [OrderController::class, 'store']);
-Route::get('/products/new', [ProductController::class, 'getNewProducts']);
-Route::get('/products/best-selling', [ProductController::class, 'getBestSellingProducts']);
+
 
 
 
@@ -221,9 +225,10 @@ Route::get('posts/other-pages/{slug}', [PostController::class, 'getOtherPages'])
 Route::get('wishlist', [WishlistController::class, 'index']);
 Route::get('products/shopprofile/{sellerId}', [ProfileShopController::class, 'getShopProducts']);
 Route::get('products', [ProductController::class, 'getAllProducts']);
-Route::get('products/search', [ProductController::class, 'search']);
+Route::get('products-search', [ProductController::class, 'search']);
 Route::post('calculateShippingCost', [ShippingCategoryController::class, 'calculateShippingCost']);
-
+Route::get('/products-new', [ProductController::class, 'getNewProducts']);
+Route::get('/products-best-selling', [ProductController::class, 'getBestSellingProducts']);
 Route::prefix('usps')->group(function () {
     Route::post('validate-address', [USPSController::class, 'validateAddress']);
     Route::post('pickup', [USPSPickupController::class, 'createPickup']);

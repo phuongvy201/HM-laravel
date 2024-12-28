@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\Template;
+use App\Models\Type;
 
 class ProductController extends Controller
 {
@@ -56,6 +57,7 @@ class ProductController extends Controller
                 'category.parent.parent' => function ($query) {
                     $query->select('id', 'name', 'parent_id');
                 },
+                'types:id,product_id,type_value,price',
                 'colors:id,product_id,color_value,color_code,image',
                 'sizes:id,product_id,size_value,price'
             ]);
@@ -131,6 +133,10 @@ class ProductController extends Controller
                 'sizes.*.size_value' => 'required_with:sizes|string',
                 'sizes.*.price' => 'required_with:sizes|numeric|min:0',
 
+                'types' => 'nullable|array',
+                'types.*.type_value' => 'required_with:types|string',
+                'types.*.price' => 'required_with:types|numeric|min:0',
+
                 'colors' => 'nullable|array',
                 'colors.*.color_value' => 'required_with:colors|string',
                 'colors.*.color_code' => 'required_with:colors|string',
@@ -145,9 +151,16 @@ class ProductController extends Controller
                 ], 422);
             }
 
-            // Tạo slug
-            $slug = Str::slug($request->name);
-            $mainImagePath = null;
+            // Tạo slug ban đầu
+            $baseSlug = Str::slug($request->name);
+            $slug = $baseSlug;
+
+            // Kiểm tra sự tồn tại của slug và tạo slug duy nhất
+            $count = 1;
+            while (Product::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $count;
+                $count++;
+            }
 
             // Xử lý upload ảnh chính
             if ($request->hasFile('image')) {
@@ -314,7 +327,7 @@ class ProductController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Thêm sản phẩm thành công',
+                'message' => 'Thêm sản ph��m thành công',
                 'data' => $product
             ], 201);
         } catch (\Exception $e) {
@@ -490,7 +503,7 @@ class ProductController extends Controller
                 'seller_id' => 'sometimes|required|exists:users,id',
                 'category_id' => 'sometimes|required|exists:categories,id',
                 'price' => 'sometimes|required|numeric|min:0',
-                'image' => 'nullable|image|mimes:jpeg,png,jpg,gif', // Validate file ảnh
+                'image' => 'sometimes|required', // Validate file ảnh
                 'description' => 'sometimes|required|string',
                 'stock' => 'sometimes|required|integer|min:0',
                 'status' => 'sometimes|required|in:0,1,2',
@@ -504,7 +517,12 @@ class ProductController extends Controller
                 'colors.*.id' => 'nullable|exists:colors,id',
                 'colors.*.color_value' => 'required_with:colors|string',
                 'colors.*.color_code' => 'required_with:colors|string',
-                'colors.*.image' => 'nullable|image|mimes:jpeg,png,jpg,gif'
+                'colors.*.image' => 'sometimes|required',
+
+                'types' => 'nullable|array',
+                'types.*.id' => 'nullable|exists:types,id',
+                'types.*.type_value' => 'required_with:types|string',
+                'types.*.price' => 'required_with:types|numeric|min:0'
             ]);
 
             if ($validator->fails()) {
@@ -563,6 +581,19 @@ class ProductController extends Controller
                         'product_id' => $product->id,
                         'size_value' => $sizeData['size_value'],
                         'price' => $sizeData['price']
+                    ]);
+                }
+            }
+            if ($request->has('types')) {
+                // Xóa tất cả types cũ
+                $product->types()->delete();
+
+                // Thêm sizes mới
+                foreach ($request->types as $typeData) {
+                    Type::create([
+                        'product_id' => $product->id,
+                        'type_value' => $typeData['type_value'],
+                        'price' => $typeData['price']
                     ]);
                 }
             }
@@ -650,9 +681,6 @@ class ProductController extends Controller
             ], 500);
         }
     }
-
-
-
 
     /**
      * Remove the specified resource from storage.
@@ -905,6 +933,7 @@ class ProductController extends Controller
                 },
                 'colors:id,product_id,color_value,color_code,image',
                 'sizes:id,product_id,size_value,price',
+                'types:id,product_id,type_value,price',
                 'sale' => function ($query) {
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
@@ -1228,7 +1257,7 @@ class ProductController extends Controller
     {
         try {
             // Tìm sản phẩm gốc
-            $originalProduct = Product::with(['sizes', 'colors'])->findOrFail($id);
+            $originalProduct = Product::with(['sizes', 'colors', 'types'])->findOrFail($id);
 
             // Tạo slug mới từ tên sản phẩm
             $slug = Str::slug($originalProduct->name) . '-copy';
@@ -1260,6 +1289,14 @@ class ProductController extends Controller
                     'color_value' => $color->color_value,
                     'color_code' => $color->color_code,
                     'image' => $color->image, // Nếu bạn muốn sao chép cả hình ảnh
+                ]);
+            }
+
+            // Sao chép types
+            foreach ($originalProduct->types as $type) {
+                $newProduct->types()->create([
+                    'type_value' => $type->type_value,
+                    'price' => $type->price,
                 ]);
             }
 
@@ -1349,100 +1386,71 @@ class ProductController extends Controller
 
                     // Xử lý Sizes
                     $sizeTemplates = $template->templateValues->whereIn('name', ['Size', 'size']);
+                    $sizeTemplateArray = $sizeTemplates->values()->toArray();
 
-                    if ($sizeTemplates->isNotEmpty()) {
-                        $sizeTemplateArray = $sizeTemplates->values()->toArray(); // Chuyển collection sang mảng để sử dụng chỉ số
+                    for ($i = 0; $i < count($sizeTemplateArray); $i++) {
+                        $sizeTemplate = $sizeTemplateArray[$i];
+                        $column = chr(ord('G') + $i);
 
-                        // Sử dụng vòng lặp for để xử lý các size
-                        for ($i = 0; $i < count($sizeTemplateArray); $i++) {
-                            $sizeTemplate = $sizeTemplateArray[$i];
-                            // Bắt đầu từ cột G cho sizes
-                            $column = chr(ord('G') + $i); // G, H, I cho XL, L, M
-
-                            // Debug giá trị từ Excel
-                            Log::info("Reading size price from Excel:", [
-                                'size' => $sizeTemplate['value'],
-                                'column' => $column,
-                                'raw_value' => $row[$column] ?? 'not set',
-                                'iii' => $i,
-                            ]);
-
-                            // Lấy giá trực tiếp từ Excel
-                            $price = 0;
-                            if (isset($row[$column]) && is_numeric($row[$column])) {
-                                $price = floatval($row[$column]);
-                            }
-
-                            Log::info("Creating size:", [
-                                'product_id' => $product->id,
-                                'size_value' => $sizeTemplate['value'],
-                                'additional_price' => $price,
-                                'column' => $column
-                            ]);
-
-                            $product->sizes()->create([
-                                'size_value' => $sizeTemplate['value'],
-                                'price' => $price,
-                                'additional_price' => 0
-                            ]);
+                        $price = 0;
+                        if (isset($row[$column]) && is_numeric($row[$column])) {
+                            $price = floatval($row[$column]);
                         }
-                    }
 
+                        $product->sizes()->create([
+                            'size_value' => $sizeTemplate['value'],
+                            'price' => $price,
+                            'additional_price' => 0
+                        ]);
+                    }
 
                     // Xử lý Colors
                     $colorTemplates = $template->templateValues->whereIn('name', ['Color', 'color']);
-                    if ($colorTemplates->isNotEmpty()) {
-                        // Bắt đầu từ cột sau các cột size
-                        $startColorColumn = chr(ord('G') + $sizeTemplates->count());
+                    $startColorColumn = chr(ord('G') + count($sizeTemplateArray));
 
-                        foreach ($colorTemplates as $i => $colorTemplate) {
-                            $column = chr(ord($startColorColumn) + $i);
-                            $imageUrl = $row[$column] ?? null;
+                    $colorTemplateArray = $colorTemplates->values()->toArray();
 
-                            // Debug thông tin color
-                            Log::info("Processing color template:", [
-                                'color_template' => $colorTemplate->toArray(),
-                                'value_color' => $colorTemplate->value_color
-                            ]);
+                    for ($i = 0; $i < count($colorTemplateArray); $i++) {
+                        $colorTemplate = $colorTemplateArray[$i];
+                        $column = chr(ord($startColorColumn) + $i);
+                        $imageUrl = $row[$column] ?? null;
 
-                            if ($imageUrl) {
-                                try {
-                                    $colorCode = $colorTemplate->value_color;
-                                    // Nếu value_color là JSON string, decode nó
-                                    if (is_string($colorCode) && json_decode($colorCode) !== null) {
-                                        $colorCode = json_decode($colorCode, true);
-                                    }
-                                    // Nếu không có color_code, sử dụng giá trị mặc định
-                                    if (empty($colorCode)) {
-                                        $colorCode = '#000000';
-                                    }
-
-                                    $product->colors()->create([
-                                        'color_value' => $colorTemplate->value,
-                                        'color_code' => $colorCode,
-                                        'image' => $imageUrl
-                                    ]);
-
-                                    Log::info("Created color successfully:", [
-                                        'product_id' => $product->id,
-                                        'color_value' => $colorTemplate->value,
-                                        'color_code' => $colorCode,
-                                        'image' => $imageUrl,
-                                        'column' => $column
-                                    ]);
-                                } catch (\Exception $e) {
-                                    Log::error("Error creating color:", [
-                                        'error' => $e->getMessage(),
-                                        'color_template' => $colorTemplate->toArray()
-                                    ]);
-                                    throw $e;
-                                }
+                        if ($imageUrl) {
+                            $colorCode = $colorTemplate['value_color'];
+                            if (is_string($colorCode) && json_decode($colorCode) !== null) {
+                                $colorCode = json_decode($colorCode, true);
                             }
+                            if (empty($colorCode)) {
+                                $colorCode = '#000000';
+                            }
+
+                            $product->colors()->create([
+                                'color_value' => $colorTemplate['value'],
+                                'color_code' => $colorCode,
+                                'image' => $imageUrl
+                            ]);
                         }
                     }
 
-                    // Xử lý Discount nếu có
+                    // Xử lý Types
+                    $typeTemplates = $template->templateValues->whereIn('name', ['Type', 'type']);
+                    $startTypeColumn = chr(ord($startColorColumn) + count($colorTemplateArray));
 
+                    $typeTemplateArray = $typeTemplates->values()->toArray();
+
+                    for ($i = 0; $i < count($typeTemplateArray); $i++) {
+                        $typeTemplate = $typeTemplateArray[$i];
+                        $column = chr(ord($startTypeColumn) + $i);
+                        $price = 0;
+                        if (isset($row[$column]) && is_numeric($row[$column])) {
+                            $price = floatval($row[$column]);
+                        }
+
+                        $product->types()->create([
+                            'type_value' => $typeTemplate['value'],
+                            'price' => $price
+                        ]);
+                    }
 
                     DB::commit();
                     $successCount++;
@@ -1453,7 +1461,6 @@ class ProductController extends Controller
                 }
             }
 
-            // Kiểm tra kết quả import
             if ($successCount === 0) {
                 return response()->json([
                     'success' => false,
@@ -1554,6 +1561,165 @@ class ProductController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Có lỗi xảy ra khi lấy danh sách sản phẩm của người bán',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Thêm sản phẩm bằng template.
+     */
+    public function addProductByTemplate(Request $request)
+    {
+        $request->validate([
+            'template_id' => 'required|exists:templates,id',
+            'name' => 'required|string|max:255',
+            'price' => 'required|numeric|min:0',
+            'image' => 'required', // Chỉ cần yêu cầu trường này
+            'description' => 'required|string',
+            'stock' => 'required|integer|min:0',
+            'status' => 'required|in:0,1,2',
+        ]);
+
+        // Khởi tạo biến để lưu đường dẫn hình ảnh
+        $mainImagePath = null;
+
+        // Kiểm tra xem hình ảnh có phải là một URL hay không
+        if (filter_var($request->image, FILTER_VALIDATE_URL)) {
+            $mainImagePath = $request->image; // Nếu là URL, sử dụng trực tiếp
+        } elseif ($request->hasFile('image')) {
+            // Nếu là file, kiểm tra tính hợp lệ
+            $mainImage = $request->file('image');
+            if ($mainImage->isValid()) {
+                $mainImageName = time() . '_' . $mainImage->getClientOriginalName();
+                $mainImage->move(public_path('images/products'), $mainImageName);
+                $mainImagePath = 'images/products/' . $mainImageName; // Lưu đường dẫn hình ảnh
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tệp hình ảnh không hợp lệ.',
+                ], 422);
+            }
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Trường hình ảnh không được gửi.',
+            ], 422);
+        }
+
+        // Kiểm tra xem $mainImagePath có giá trị hợp lệ không
+        if (empty($mainImagePath)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đường dẫn hình ảnh không hợp lệ.',
+            ], 422);
+        }
+
+        try {
+            // Lấy template
+            $template = Template::with('templateValues')->findOrFail($request->template_id);
+            $sizeTemplates = $template->templateValues->whereIn('name', ['Size', 'size']);
+            $colorTemplates = $template->templateValues->whereIn('name', ['Color', 'color']);
+            $typeTemplates = $template->templateValues->whereIn('name', ['Type', 'type']);
+
+            // Tạo slug ban đầu
+            $baseSlug = Str::slug($request->name);
+            $slug = $baseSlug;
+
+            // Kiểm tra sự tồn tại của slug và tạo slug duy nhất
+            $count = 1;
+            while (Product::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $count;
+                $count++;
+            }
+
+            // Tạo sản phẩm
+            $product = Product::create([
+                'name' => $request->name,
+                'slug' => $slug,
+                'seller_id' => Auth::id(),
+                'category_id' => $template->category_id,
+                'price' => $request->price,
+                'image' => $mainImagePath, // Sử dụng đường dẫn hình ảnh đã xử lý
+                'description' => $request->description,
+                'stock' => $request->stock,
+                'status' => $request->status,
+            ]);
+
+            // Xử lý sizes từ template
+            foreach ($sizeTemplates as $sizeTemplate) {
+                $product->sizes()->create([
+                    'size_value' => $sizeTemplate->value,
+                    'price' => $sizeTemplate->additional_price,
+                ]);
+            }
+
+            // Xử lý colors từ template
+            foreach ($colorTemplates as $colorTemplate) {
+                $colorImage = $colorTemplate->image_url ?? 'images/products/colors/default.jpg'; // Sử dụng hình ảnh mặc định nếu không có
+                $product->colors()->create([
+                    'color_value' => $colorTemplate->value,
+                    'color_code' => $colorTemplate->value_color,
+                    'image' => $colorImage
+                ]);
+            }
+
+            // Xử lý types từ template
+            foreach ($typeTemplates as $typeTemplate) {
+                $product->types()->create([
+                    'type_value' => $typeTemplate->value,
+                    'price' => $typeTemplate->additional_price,
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sản phẩm đã được thêm thành công từ template',
+                'data' => $product
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi thêm sản phẩm từ template',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getTypes(string $id)
+    {
+        try {
+            // Kiểm tra sản phẩm tồn tại
+            $product = Product::findOrFail($id);
+
+            // Lấy tất cả types của sản phẩm
+            $types = Type::where('product_id', $id)
+                ->select([
+                    'id',
+                    'product_id',
+                    'type_value',
+                    'price',
+                    'created_at',
+                    'updated_at'
+                ])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Lấy danh sách loại sản phẩm thành công',
+                'data' => $types
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy sản phẩm',
+                'error' => 'Product not found'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi lấy danh sách loại sản phẩm',
                 'error' => $e->getMessage()
             ], 500);
         }
