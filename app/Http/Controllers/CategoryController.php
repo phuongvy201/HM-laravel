@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use App\Models\Product;
+use Illuminate\Support\Facades\Log;
 
 class CategoryController extends Controller
 {
@@ -244,7 +245,7 @@ class CategoryController extends Controller
             // Validate dữ liệu đầu vào
             $validatedData = $request->validate([
                 'name' => 'required|string|max:255',
-                'parent_id' => 'nullable|exists:categories,id',
+                'parent_id' => 'nullable|numeric|exists:categories,id',
                 'description' => 'nullable|string',
                 'status' => 'nullable|in:0,1',
                 'created_by' => 'nullable|integer',
@@ -252,14 +253,20 @@ class CategoryController extends Controller
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             ]);
 
-            // Cập nhật thông tin danh mục
-            $category->name = $validatedData['name'];
-            $category->slug = Str::slug($validatedData['name']);
-            $category->parent_id = $validatedData['parent_id'] ?? $category->parent_id;
-            $category->description = $validatedData['description'] ?? $category->description;
-            $category->status = $validatedData['status'] ?? $category->status;
-            $category->created_by = $validatedData['created_by'] ?? $category->created_by;
-            $category->updated_by = $validatedData['updated_by'] ?? $category->updated_by;
+            // Chuẩn bị dữ liệu cập nhật
+            $updateData = [
+                'name' => $validatedData['name'],
+                'slug' => Str::slug($validatedData['name']),
+                'description' => $validatedData['description'] ?? $category->description,
+                'status' => $validatedData['status'] ?? $category->status,
+                'created_by' => $validatedData['created_by'] ?? $category->created_by,
+                'updated_by' => $validatedData['updated_by'] ?? $category->updated_by,
+            ];
+
+            // Xử lý parent_id
+            if ($request->has('parent_id')) {
+                $updateData['parent_id'] = $request->input('parent_id') === '' ? null : $request->input('parent_id');
+            }
 
             // Xử lý cập nhật ảnh
             if ($request->hasFile('image')) {
@@ -271,21 +278,23 @@ class CategoryController extends Controller
                 $image = $request->file('image');
                 $imageName = time() . '_' . $image->getClientOriginalName();
                 $image->move(public_path('images/categories'), $imageName);
-                $category->image = 'images/categories/' . $imageName;
-            } else {
-                // Nếu không có ảnh mới, giữ lại ảnh cũ
-                $category->image = $category->getOriginal('image');
+                $updateData['image'] = 'images/categories/' . $imageName;
             }
 
-            // Lưu lại danh mục
-            $category->save();
+            // Cập nhật danh mục
+            $category->update($updateData);
+
+            // Load relationship parent cho response
+            $category->load('parent');
 
             return response()->json([
                 'success' => true,
                 'message' => 'Cập nhật danh mục thành công',
                 'data' => $category
             ]);
+            
         } catch (\Exception $e) {
+            Log::error('Category update error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Có lỗi xảy ra khi cập nhật danh mục',
@@ -396,13 +405,13 @@ class CategoryController extends Controller
             // Lấy thông số phân trang từ request
             $perPage = $request->input('per_page', 12); // Mặc định 12 sản phẩm mỗi trang
             $page = $request->input('page', 1);
-            
+
             // Tìm category theo slug
             $category = Category::where('slug', $slug)->firstOrFail();
-            
+
             // Lấy tất cả ID của category con (bao gồm cả category hiện tại)
             $categoryIds = collect([$category->id]);
-            
+
             // Lấy tất cả category con
             $childCategories = Category::where('parent_id', $category->id)->get();
             foreach ($childCategories as $child) {
@@ -411,10 +420,10 @@ class CategoryController extends Controller
                 $grandChildren = Category::where('parent_id', $child->id)->pluck('id');
                 $categoryIds = $categoryIds->concat($grandChildren);
             }
-            
+
             // Query builder cho sản phẩm
             $productsQuery = Product::whereIn('category_id', $categoryIds)
-                ->with(['category', 'discounts' => function($query) {
+                ->with(['category', 'discounts' => function ($query) {
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
@@ -423,7 +432,7 @@ class CategoryController extends Controller
 
             // Tổng số sản phẩm (trước khi phân trang)
             $totalProducts = $productsQuery->count();
-            
+
             // Thực hiện phân trang
             $products = $productsQuery->skip(($page - 1) * $perPage)
                 ->take($perPage)
@@ -485,7 +494,7 @@ class CategoryController extends Controller
         try {
             // Tìm category cha theo slug
             $parentCategory = Category::where('slug', $slug)->first();
-            
+
             if (!$parentCategory) {
                 return response()->json([
                     'success' => false,

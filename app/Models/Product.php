@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\ProductSale;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class Product extends Model
 {
@@ -22,12 +23,10 @@ class Product extends Model
         'image',
         'status',
         'updated_by',
-        'stock'
+        'stock',
+        'template_id'
     ];
-    public function type()
-    {
-        return $this->belongsTo(Type::class, 'type_id');
-    }
+
     public function discounts()
     {
         return $this->hasMany(ProductSale::class, 'product_id', 'id')
@@ -41,14 +40,7 @@ class Product extends Model
     {
         return $this->belongsTo(User::class, 'seller_id');
     }
-    public function sizes()
-    {
-        return $this->hasMany(Size::class);
-    }
-    public function colors()
-    {
-        return $this->hasMany(Color::class);
-    }
+
     public function sale()
     {
         return $this->hasOne(ProductSale::class);
@@ -57,10 +49,7 @@ class Product extends Model
     {
         return $this->hasOne(ProfileShop::class, 'owner_id', 'seller_id');
     }
-    public function types()
-    {
-        return $this->hasMany(Type::class);
-    }
+
     public static function searchBySeller($id = null, $name = null, $createdFrom = null, $createdTo = null)
     {
         $query = self::query();
@@ -75,5 +64,32 @@ class Product extends Model
             $query->whereBetween('created_at', [$createdFrom, $createdTo]);
         }
         return $query->get();
+    }
+    public function template()
+    {
+        return $this->belongsTo(ProductTemplate::class, 'template_id');
+    }
+
+    /**
+     * Xóa sản phẩm và các bản ghi sale liên quan
+     * @return bool
+     */
+    public function safeDelete()
+    {
+        try {
+            DB::beginTransaction();
+
+            // Xóa các bản ghi sale liên quan
+            $this->sale()->delete();
+
+            // Xóa sản phẩm
+            $deleted = $this->delete();
+
+            DB::commit();
+            return $deleted;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 }

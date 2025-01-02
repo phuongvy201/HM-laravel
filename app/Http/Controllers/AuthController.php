@@ -111,31 +111,19 @@ class AuthController extends Controller
         if (!Auth::attempt($validatedData)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Incorrect login information'
+                'message' => 'Thông tin đăng nhập không chính xác'
             ], 401);
         }
 
         $user = User::where('email', $validatedData['email'])->firstOrFail();
 
-        // Check if the user is already logged in from another device
-        if ($user->tokens()->count() > 0) {
-            // Notify that the user is logged in from another device
-            return response()->json([
-                'status' => 'warning',
-                'message' => 'Logged in from another device. Logging out previous sessions.',
-            ], 200);
-        }
-
-        // Delete old token if exists
-        $user->tokens()->delete();
-
-        // Create new token with abilities based on role
+        // Tạo token mới với quyền dựa trên vai trò
         $abilities = $user->role === 'admin' ? ['admin'] : ['user'];
         $token = $user->createToken('auth_token', $abilities)->plainTextToken;
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Login successful',
+            'message' => 'Đăng nhập thành công',
             'access_token' => $token,
             'token_type' => 'Bearer',
             'user' => $user

@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('discount_name')->nullable();
             $table->datetime('date_begin')->nullable();
             $table->datetime('date_end')->nullable();
+            $table->boolean('status')->default(true);
             $table->unsignedBigInteger('created_by')->nullable();
             $table->unsignedBigInteger('updated_by')->nullable();
             $table->timestamps();

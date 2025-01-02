@@ -22,6 +22,9 @@ return new class extends Migration
             $table->string('phone_number')->nullable();
             $table->string('address')->nullable();
             $table->tinyInteger('status')->default(1);
+            $table->string('verification_code')->nullable();
+            $table->timestamp('email_verified_at')->nullable(); 
+
             $table->string('gender', 3)->nullable();
             $table->timestamps();
         });

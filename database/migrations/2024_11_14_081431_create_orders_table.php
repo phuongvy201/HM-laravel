@@ -13,14 +13,13 @@ return new class extends Migration
     {
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('customer_id');
+            $table->unsignedBigInteger('customer_id')->nullable();
             $table->unsignedBigInteger('seller_id');
             $table->decimal('total_amount', 10, 2);
             $table->string('status', 20);
             $table->timestamps();
 
             // Thêm foreign key constraints
-            $table->foreign('customer_id')->references('id')->on('users')->onDelete('cascade');
             $table->foreign('seller_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
