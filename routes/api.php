@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DiscountController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BulkOrderController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\CustomerController;
@@ -161,6 +162,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/product-templates', [ProductTemplateController::class, 'index']);
         Route::post('/products/import', [ProductController::class, 'importProducts']);
         Route::post('/product-templates/{id}', [ProductTemplateController::class, 'update']);
+        Route::post('product-templates/{template}/variants', [ProductTemplateController::class, 'addVariants']);
         Route::delete('/product-templates/{id}', [ProductTemplateController::class, 'destroy']);
         Route::get('/templates/{id}', [ProductTemplateController::class, 'show']);
         Route::post('/products/add-by-template', [ProductController::class, 'addProductByTemplate']);
@@ -215,7 +217,7 @@ Route::get('topics/{slug}', [TopicController::class, 'getTopicBySlug']);
 Route::get('categories/{slug}/products', [CategoryController::class, 'getProductsByCategory']);
 Route::get('categories/{slug}/child', [CategoryController::class, 'getChildCategories']);
 Route::get('posts/topic/{slug}', [PostController::class, 'getPostsByTopic']);
-Route::get('posts/related/{postId}', [PostController::class, 'getRelatedPosts']);
+Route::get('posts/related/{id}', [PostController::class, 'getRelatedPosts']);
 Route::get('post/slug/{slug}', [PostController::class, 'getPostBySlug']);
 Route::get('posts/pages', [PostController::class, 'getPages']);
 Route::get('post/page/{slug}', [PostController::class, 'getPageBySlug']);
@@ -251,5 +253,6 @@ Route::prefix('payment-test')->group(function () {
         ->name('payment.test.reset-daily-limits');
 });
 Route::post('send-mail', [MailController::class, 'sendMail']);
+Route::post('submit-form', [BulkOrderController::class, 'store']);
 
 Route::apiResource('product-templates', ProductTemplateController::class);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Post;
+use App\Models\Topic;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -51,6 +52,18 @@ class PostController extends Controller
     public function getPostsByTopic($slug)
     {
         try {
+            // Lấy thông tin topic
+            $topic = Topic::where('slug', $slug)->first();
+
+            // Nếu không tìm thấy topic, trả về thông báo lỗi
+            if (!$topic) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Topic không tồn tại',
+                ], 404);
+            }
+
+            // Lấy danh sách bài viết theo topic
             $posts = Post::with(['user:id,name', 'topic:id,name,slug'])
                 ->whereHas('topic', function ($query) use ($slug) {
                     $query->where('slug', $slug);
@@ -66,6 +79,7 @@ class PostController extends Controller
                 'success' => true,
                 'message' => 'Lấy danh sách bài viết theo topic thành công',
                 'data' => [
+                    'topic' => $topic, // Thêm thông tin topic vào phản hồi
                     'items' => $posts->items(),
                     'pagination' => [
                         'current_page' => $posts->currentPage(),
@@ -84,20 +98,16 @@ class PostController extends Controller
         }
     }
 
-    public function getRelatedPosts($slug)
+    public function getRelatedPosts($id)
     {
         try {
             // Lấy topic_id của bài viết hiện tại
-            $currentPost = Post::findOrFail($slug);
+            $currentPost = Post::findOrFail($id);
 
             // Lấy các bài viết cùng topic, ngoại trừ bài viết hiện tại
             $relatedPosts = Post::with(['user:id,name', 'topic:id,name,slug'])
                 ->where('topic_id', $currentPost->topic_id)
-                ->where('slug', '!=', $slug)
-                ->where([
-                    ['status', 1],
-                    ['type', 'post']
-                ])
+                ->where('id', '!=', $id)
                 ->orderBy('created_at', 'desc')
                 ->limit(6)
                 ->get();

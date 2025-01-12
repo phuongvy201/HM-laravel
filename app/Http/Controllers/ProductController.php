@@ -920,7 +920,7 @@ class ProductController extends Controller
     public function getAllProducts(Request $request)
     {
         try {
-            $perPage = (int)$request->get('per_page', 10); // Số sản phẩm mỗi trang, mặc định là 10
+            $perPage = (int)$request->get('per_page', 10);
 
             $query = Product::with([
                 'sale' => function ($query) {
@@ -959,14 +959,13 @@ class ProductController extends Controller
                     'products.created_at',
                     'products.description'
                 ])
-                ->orderByDesc('created_at');
+                ->orderByDesc('products.created_at');
 
-            // Thực hiện phân trang
             $products = $query->paginate($perPage)->withQueryString();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Lấy danh sách sản phẩm thành công',
+                'message' => 'Get products list successfully',
                 'data' => $products->items(),
                 'meta' => [
                     'current_page' => $products->currentPage(),
@@ -988,7 +987,7 @@ class ProductController extends Controller
             Log::error('Error getting products: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Có lỗi xảy ra khi lấy danh sách sản phẩm',
+                'message' => 'Error occurred while getting products list',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -1187,23 +1186,43 @@ class ProductController extends Controller
      */
 
 
+    private function generateUniqueImageName($originalName)
+    {
+        $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+        $fileName = pathinfo($originalName, PATHINFO_FILENAME);
+        $uniqueName = $fileName . '_' . time() . '_' . uniqid();
+        return $uniqueName . '.' . $extension;
+    }
+
     public function copyProduct($id)
     {
         try {
-            // Tìm sản phẩm gốc
             $originalProduct = Product::findOrFail($id);
 
-            // Tạo slug mới từ tên sản phẩm
+            // Tạo slug mới
             $slug = Str::slug($originalProduct->name) . '-copy';
-            $slugCount = Product::where('slug', $slug)->count();
+            $slugCount = Product::where('slug', 'like', $slug . '%')->count();
             if ($slugCount > 0) {
-                $slug = Str::slug($originalProduct->name) . '-copy-' . time();
+                $slug = $slug . '-' . ($slugCount + 1);
             }
 
-            // Tạo sản phẩm mới từ sản phẩm gốc
+            // Copy và lưu hình ảnh mới
+            $newImagePath = null;
+            if ($originalProduct->image) {
+                $originalImagePath = public_path($originalProduct->image);
+                if (file_exists($originalImagePath)) {
+                    $newFileName = $this->generateUniqueImageName(basename($originalProduct->image));
+                    $newImagePath = 'images/products/' . $newFileName;
+                    copy($originalImagePath, public_path($newImagePath));
+                } else if (filter_var($originalProduct->image, FILTER_VALIDATE_URL)) {
+                    $newImagePath = $originalProduct->image;
+                }
+            }
+
+            // Tạo sản phẩm mới
             $newProduct = $originalProduct->replicate();
             $newProduct->slug = $slug;
-            $newProduct->image = $originalProduct->image;
+            $newProduct->image = $newImagePath;
             $newProduct->save();
 
             return response()->json([
@@ -1211,12 +1230,6 @@ class ProductController extends Controller
                 'message' => 'Sản phẩm đã được sao chép thành công',
                 'data' => $newProduct
             ], 201);
-        } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Sản phẩm không tồn tại',
-                'error' => $e->getMessage()
-            ], 404);
         } catch (Exception $e) {
             Log::error('Error copying product: ' . $e->getMessage());
             return response()->json([
@@ -1356,10 +1369,9 @@ class ProductController extends Controller
         try {
             DB::beginTransaction();
 
-            // Lấy template
             $template = ProductTemplate::findOrFail($request->template_id);
 
-            // Tạo slug
+            // Tạo slug độc nhất
             $baseSlug = Str::slug($request->name);
             $slug = $baseSlug;
             $count = 1;
@@ -1368,20 +1380,20 @@ class ProductController extends Controller
                 $count++;
             }
 
-            // Xử lý hình ảnh chính
+            // Xử lý hình ảnh với tên độc nhất
             $mainImagePath = null;
             if (filter_var($request->image, FILTER_VALIDATE_URL)) {
                 $mainImagePath = $request->image;
             } elseif ($request->hasFile('image')) {
                 $mainImage = $request->file('image');
                 if ($mainImage->isValid()) {
-                    $mainImageName = time() . '_' . $mainImage->getClientOriginalName();
+                    $mainImageName = $this->generateUniqueImageName($mainImage->getClientOriginalName());
                     $mainImage->move(public_path('images/products'), $mainImageName);
                     $mainImagePath = 'images/products/' . $mainImageName;
                 }
             }
 
-            // Tạo sản phẩm
+            // Tạo sản phẩm mới
             $product = Product::create([
                 'name' => $request->name,
                 'slug' => $slug,
@@ -1404,6 +1416,9 @@ class ProductController extends Controller
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
+            if (isset($mainImagePath) && file_exists(public_path($mainImagePath))) {
+                unlink(public_path($mainImagePath));
+            }
             return response()->json([
                 'success' => false,
                 'message' => 'Có lỗi xảy ra khi thêm sản phẩm từ template',

@@ -23,11 +23,11 @@ class ProductTemplateController extends Controller
             'image' => 'nullable',
             'attributes' => 'nullable|array',
             'variants' => 'nullable|array',
-            'variants.*.sku' => 'required_with:variants|string',
-            'variants.*.price' => 'required_with:variants|numeric|min:0',
-            'variants.*.quantity' => 'required_with:variants|integer|min:0',
+            'variants.*.sku' => 'nullable|string',
+            'variants.*.price' => 'nullable|numeric|min:0',
+            'variants.*.quantity' => 'nullable|integer|min:0',
             'variants.*.image' => 'nullable',
-            'variants.*.attributes' => 'required_with:variants|array'
+            'variants.*.attributes' => 'nullable|array'
         ]);
 
         try {
@@ -62,7 +62,7 @@ class ProductTemplateController extends Controller
                         'template_id' => $template->id,
                         'sku' => $variantData['sku'],
                         'price' => $variantData['price'],
-                        'quantity' => $variantData['quantity'],
+                        'quantity' => $variantData['quantity'] ?? 30,
                         'image' => $variantData['image'] ?? null,
                     ]);
 
