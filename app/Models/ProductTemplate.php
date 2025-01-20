@@ -14,7 +14,6 @@ class ProductTemplate extends Model
     protected $fillable = [
         'name',
         'category_id',
-        'image',
         'user_id',
         'description',
         'base_price',
@@ -39,4 +38,14 @@ class ProductTemplate extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    public function images()
+    {
+        return $this->hasMany(TemplateImage::class, 'template_id');
+    }
+    public function templateImages()
+    {
+        return $this->hasMany(TemplateImage::class, 'template_id');
+    }
+
 }

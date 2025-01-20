@@ -292,7 +292,6 @@ class CategoryController extends Controller
                 'message' => 'Cập nhật danh mục thành công',
                 'data' => $category
             ]);
-            
         } catch (\Exception $e) {
             Log::error('Category update error: ' . $e->getMessage());
             return response()->json([
@@ -427,6 +426,8 @@ class CategoryController extends Controller
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
+                }, 'images' => function ($query) {
+                    $query->orderBy('created_at', 'asc'); // Sắp xếp hình ảnh theo ngày tạo
                 }])
                 ->where('status', 1);
 
@@ -445,7 +446,7 @@ class CategoryController extends Controller
                         'slug' => $product->slug,
                         'description' => $product->description,
                         'price' => $product->price,
-                        'image' => $product->image,
+                        'main_image' => $product->images->first()->image_url ?? null, // Lấy hình ảnh đầu tiên làm ảnh chính
                         'category_name' => $product->category->name,
                         'category_slug' => $product->category->slug,
                         'sale' => $currentDiscount ? [

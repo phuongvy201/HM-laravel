@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Validator;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\Template;
 use App\Models\Type;
+use App\Models\ProductImage;
+use Illuminate\Http\UploadedFile;
 
 class ProductController extends Controller
 {
@@ -48,6 +50,10 @@ class ProductController extends Controller
                 },
                 'profileShop' => function ($query) {
                     $query->select('id', 'owner_id', 'shop_name', 'description', 'logo_url', 'banner_url');
+                },
+                'images' => function ($query) {
+                    $query->select('id', 'product_id', 'image_url', 'created_at')
+                        ->orderBy('created_at', 'asc');
                 }
             ])
                 ->select([
@@ -57,7 +63,6 @@ class ProductController extends Controller
                     'seller_id',
                     'category_id',
                     'price',
-                    'image',
                     'template_id',
                     'status',
                     'stock',
@@ -69,6 +74,12 @@ class ProductController extends Controller
 
             // Thực hiện phân trang
             $products = $query->paginate($perPage)->withQueryString();
+
+            // Lấy hình ảnh chính cho từng sản phẩm
+            $products->transform(function ($product) {
+                $product->main_image = $product->images->first()->image_url ?? null;
+                return $product;
+            });
 
             return response()->json([
                 'success' => true,
@@ -130,6 +141,9 @@ class ProductController extends Controller
                 },
                 'template' => function ($query) {
                     $query->select('id', 'name');
+                },
+                'images' => function ($query) {
+                    $query->select('id', 'product_id', 'image_url');
                 }
             ])
                 ->select([
@@ -139,7 +153,6 @@ class ProductController extends Controller
                     'seller_id',
                     'category_id',
                     'price',
-                    'image',
                     'status',
                     'stock',
                     'template_id',
@@ -165,87 +178,6 @@ class ProductController extends Controller
     /**
      * Get product colors
      */
-    public function getColors(string $id)
-    {
-        try {
-            // Kiểm tra sản phẩm tồn tại
-            $product = Product::findOrFail($id);
-
-            // Lấy tất cả colors của sản phẩm
-            $colors = Color::where('product_id', $id)
-                ->select([
-                    'id',
-                    'product_id',
-                    'color_value',
-                    'color_code',
-                    'image',
-                    'created_at',
-                    'updated_at'
-                ])
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Lấy danh sách màu sắc thành công',
-                'data' => $colors
-            ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy sản phẩm',
-                'error' => 'Product not found'
-            ], 404);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Có lỗi xảy ra khi lấy danh sách màu sắc',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get product sizes
-     */
-    public function getSizes(string $id)
-    {
-        try {
-            // Kiểm tra sản phẩm tồn tại
-            $product = Product::findOrFail($id);
-
-            // Lấy tất cả sizes của sản phẩm
-            $sizes = Size::where('product_id', $id)
-                ->select([
-                    'id',
-                    'product_id',
-                    'size_value',
-                    'price',
-                    'created_at',
-                    'updated_at'
-                ])
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Lấy danh sách kích thước thành công',
-                'data' => $sizes
-            ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy sản phẩm',
-                'error' => 'Product not found'
-            ], 404);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Có lỗi xảy ra khi lấy danh sách kích thước',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 
     /**
      * Show the form for editing the specified resource.
@@ -271,8 +203,6 @@ class ProductController extends Controller
                 'stock' => 'required|integer|min:0',
                 'description' => 'nullable|string',
                 'template_id' => 'nullable|exists:product_templates,id',
-                'image' => 'nullable',
-                'status' => 'required|boolean'
             ]);
 
             if ($validator->fails()) {
@@ -294,21 +224,8 @@ class ProductController extends Controller
                 }
                 $product->slug = $slug;
             }
-            if ($request->hasFile('image')) {
-                // Xóa ảnh cũ nếu tồn tại
-                if ($product->image && file_exists(public_path($product->image))) {
-                    unlink(public_path($product->image));
-                }
 
-                $image = $request->file('image');
-                $imageName = time() . '_' . $image->getClientOriginalName();
-                $image->move(public_path('images/products'), $imageName);
-                $product->image = 'images/products/' . $imageName;
-            } else {
-                // Nếu không có ảnh mới, giữ lại ảnh cũ
-                $product->image = $product->getOriginal('image');
-            }
-            // Update basic information
+            // Cập nhật thông tin sản phẩm
             $product->update([
                 'name' => $request->name,
                 'category_id' => $request->category_id,
@@ -318,6 +235,35 @@ class ProductController extends Controller
                 'description' => $request->description,
                 'status' => $request->status
             ]);
+
+            // Xóa tất cả hình ảnh cũ
+            $product->images()->delete();
+
+            // Thêm hình ảnh mới
+            if ($request->has('images')) {
+                // Xóa hình ảnh cũ một lần duy nhất
+                $product->images()->delete();
+
+                // Xử lý tất cả hình ảnh trong một vòng lặp duy nhất
+                foreach ($request->images as $image) {
+                    if ($image instanceof UploadedFile) {
+                        // Xử lý file mới upload
+                        $imageName = time() . '_' . $image->getClientOriginalName();
+                        $image->move(public_path('images/products'), $imageName);
+
+                        ProductImage::create([
+                            'product_id' => $product->id,
+                            'image_url' => 'images/products/' . $imageName
+                        ]);
+                    } elseif (is_string($image)) {
+                        // Xử lý URL hình ảnh cũ
+                        ProductImage::create([
+                            'product_id' => $product->id,
+                            'image_url' => $image
+                        ]);
+                    }
+                }
+            }
 
             // Load category relationship for response
             $product->load(['category:id,name']);
@@ -446,6 +392,9 @@ class ProductController extends Controller
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
+                },
+                'images' => function ($query) {
+                    $query->orderBy('created_at', 'desc'); // Sắp xếp hình ảnh theo ngày tạo
                 }
             ])
                 ->select([
@@ -455,7 +404,6 @@ class ProductController extends Controller
                     'seller_id',
                     'category_id',
                     'price',
-                    'image',
                     'status',
                     'stock',
                     'created_at',
@@ -467,8 +415,11 @@ class ProductController extends Controller
                 ->latest()
                 ->get();
 
-            // Thêm thông tin discount vào response
-
+            // Lấy hình ảnh mới nhất làm ảnh chính
+            $products->transform(function ($product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh mới nhất
+                return $product;
+            });
 
             return response()->json([
                 'success' => true,
@@ -496,6 +447,9 @@ class ProductController extends Controller
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
+                },
+                'images' => function ($query) {
+                    $query->orderBy('created_at', 'asc'); // Sắp xếp hình ảnh theo ngày tạo
                 }
             ])
                 ->select([
@@ -505,7 +459,6 @@ class ProductController extends Controller
                     'products.seller_id',
                     'products.category_id',
                     'products.price',
-                    'products.image',
                     'products.status',
                     'products.stock',
                     'products.created_at',
@@ -522,7 +475,6 @@ class ProductController extends Controller
                     'products.seller_id',
                     'products.category_id',
                     'products.price',
-                    'products.image',
                     'products.status',
                     'products.stock',
                     'products.created_at',
@@ -531,6 +483,12 @@ class ProductController extends Controller
                 ->orderByDesc('total_sold')
                 ->limit(8)
                 ->get();
+
+            // Lấy hình ảnh đầu tiên làm ảnh chính
+            $products->transform(function ($product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh đầu tiên
+                return $product;
+            });
 
             return response()->json([
                 'success' => true,
@@ -611,70 +569,36 @@ class ProductController extends Controller
                     $query->select('id', 'name', 'parent_id');
                 },
                 'seller' => function ($query) {
-                    $query->select([
-                        'id',
-                        'name'
-                    ]);
+                    $query->select(['id', 'name']);
                 },
                 'profileShop' => function ($query) {
-                    $query->select([
-                        'id',
-                        'shop_name',
-                        'owner_id',
-                        'description',
-                        'logo_url',
-                        'banner_url'
-                    ]);
+                    $query->select(['id', 'shop_name', 'owner_id', 'description', 'logo_url', 'banner_url']);
                 },
                 'template' => function ($query) {
                     $query->with([
                         'attributes' => function ($query) {
-                            $query->select([
-                                'id',
-                                'product_template_id',
-                                'name'
-                            ])->with([
+                            $query->select(['id', 'product_template_id', 'name'])->with([
                                 'templateAttributeValues' => function ($query) {
-                                    $query->select([
-                                        'id',
-                                        'template_attribute_id',
-                                        'value'
-                                    ]);
+                                    $query->select(['id', 'template_attribute_id', 'value']);
                                 }
                             ]);
                         },
                         'variants' => function ($query) {
-                            $query->select([
-                                'id',
-                                'template_id',
-                                'sku',
-                                'price',
-                                'image',
-                                'quantity'
-                            ])->with([
+                            $query->select(['id', 'template_id', 'sku', 'price', 'image', 'quantity'])->with([
                                 'attributeValues' => function ($query) {
-                                    $query->select([
-                                        'template_attribute_values.id',
-                                        'template_attribute_values.template_attribute_id',
-                                        'template_attribute_values.value'
-                                    ]);
+                                    $query->select(['template_attribute_values.id', 'template_attribute_values.template_attribute_id', 'template_attribute_values.value']);
                                 }
                             ]);
-                        }
-                    ])->select([
-                        'id',
-                        'name',
-                        'category_id',
-                        'image',
-                        'description',
-                        'base_price'
-                    ]);
+                        },
+                        'templateImages'
+                    ])->select(['id', 'name', 'category_id', 'description', 'base_price']);
                 },
                 'sale' => function ($query) {
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
-                }
+                },
+                'productImages'
             ])->firstOrFail();
 
             // Tổ chức lại dữ liệu variants
@@ -708,6 +632,13 @@ class ProductController extends Controller
                 }
             }
 
+            // Lấy hình ảnh từ ProductImage và TemplateImage
+            $productImages = $product->productImages->pluck('image_url')->toArray(); // Hình ảnh sản phẩm
+            $templateImages = $product->template ? $product->template->templateImages->pluck('url')->toArray() : []; // Hình ảnh template
+
+            // Gộp chung hình ảnh
+            $allImages = array_merge($productImages, $templateImages);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Lấy thông tin chi tiết sản phẩm thành công',
@@ -718,10 +649,10 @@ class ProductController extends Controller
                         'slug' => $product->slug,
                         'seller_id' => $product->seller_id,
                         'description' => $product->description,
-                        'image' => $product->image,
                         'base_price' => $product->price,
                         'stock' => $product->stock,
                         'status' => $product->status,
+                        'images' => $allImages // Gộp chung hình ảnh
                     ],
                     'template_info' => $product->template ? [
                         'id' => $product->template->id,
@@ -804,7 +735,8 @@ class ProductController extends Controller
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
-                }
+                },
+                'images' // Thêm mối quan hệ images
             ])
                 ->select([
                     'products.id',
@@ -813,7 +745,6 @@ class ProductController extends Controller
                     'products.seller_id',
                     'products.category_id',
                     'products.price',
-                    'products.image',
                     'products.status',
                     'products.stock',
                     'products.created_at',
@@ -852,6 +783,12 @@ class ProductController extends Controller
                 ->limit(8)
                 ->get();
 
+            // Lấy hình ảnh đầu tiên làm ảnh chính cho mỗi sản phẩm
+            $products->transform(function ($product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh đầu tiên
+                return $product;
+            });
+
             return response()->json([
                 'success' => true,
                 'message' => 'Lấy danh sách sản phẩm liên quan thành công',
@@ -880,6 +817,9 @@ class ProductController extends Controller
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
+                },
+                'images' => function ($query) {
+                    $query->orderBy('created_at', 'asc'); // Sắp xếp hình ảnh theo ngày tạo
                 }
             ])
                 ->select([
@@ -889,7 +829,6 @@ class ProductController extends Controller
                     'products.seller_id',
                     'products.category_id',
                     'products.price',
-                    'products.image',
                     'products.status',
                     'products.stock',
                     'products.created_at',
@@ -902,6 +841,12 @@ class ProductController extends Controller
                 ->latest()
                 ->limit(8)
                 ->get();
+
+            // Lấy hình ảnh đầu tiên làm ảnh chính
+            $products->transform(function ($product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh đầu tiên
+                return $product;
+            });
 
             return response()->json([
                 'success' => true,
@@ -927,6 +872,9 @@ class ProductController extends Controller
                     $query->where('status', 1)
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
+                },
+                'images' => function ($query) {
+                    $query->orderBy('created_at', 'asc'); // Sắp xếp hình ảnh theo ngày tạo
                 }
             ])
                 ->select([
@@ -936,7 +884,6 @@ class ProductController extends Controller
                     'products.seller_id',
                     'products.category_id',
                     'products.price',
-                    'products.image',
                     'products.status',
                     'products.stock',
                     'products.created_at',
@@ -953,7 +900,6 @@ class ProductController extends Controller
                     'products.seller_id',
                     'products.category_id',
                     'products.price',
-                    'products.image',
                     'products.status',
                     'products.stock',
                     'products.created_at',
@@ -962,6 +908,12 @@ class ProductController extends Controller
                 ->orderByDesc('products.created_at');
 
             $products = $query->paginate($perPage)->withQueryString();
+
+            // Lấy hình ảnh đầu tiên làm ảnh chính
+            $products->transform(function ($product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh đầu tiên
+                return $product;
+            });
 
             return response()->json([
                 'success' => true,
@@ -1003,6 +955,7 @@ class ProductController extends Controller
             $createdFrom = $request->input('created_from');
             $createdTo = $request->input('created_to');
             $id = $request->input('id');
+
             $query = Product::with([
                 'category' => function ($query) {
                     $query->select('id', 'name', 'parent_id');
@@ -1015,6 +968,9 @@ class ProductController extends Controller
                 },
                 'template' => function ($query) {
                     $query->select('id', 'name');
+                },
+                'images' => function ($query) {
+                    $query->orderBy('created_at', 'asc'); // Sắp xếp hình ảnh theo ngày tạo
                 }
             ])
                 ->select([
@@ -1024,7 +980,6 @@ class ProductController extends Controller
                     'seller_id',
                     'category_id',
                     'price',
-                    'image',
                     'template_id',
                     'status',
                     'stock',
@@ -1057,6 +1012,12 @@ class ProductController extends Controller
 
             // Phân trang
             $products = $query->paginate($perPage)->withQueryString();
+
+            // Lấy hình ảnh đầu tiên làm ảnh chính
+            $products->transform(function ($product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh đầu tiên
+                return $product;
+            });
 
             return response()->json([
                 'success' => true,
@@ -1106,7 +1067,6 @@ class ProductController extends Controller
                     'products.seller_id',
                     'products.category_id',
                     'products.price',
-                    'products.image',
                     'products.status',
                     'products.stock',
                     'products.created_at',
@@ -1208,22 +1168,32 @@ class ProductController extends Controller
 
             // Copy và lưu hình ảnh mới
             $newImagePath = null;
+            $newImages = []; // Mảng để lưu hình ảnh mới
             if ($originalProduct->image) {
                 $originalImagePath = public_path($originalProduct->image);
                 if (file_exists($originalImagePath)) {
                     $newFileName = $this->generateUniqueImageName(basename($originalProduct->image));
                     $newImagePath = 'images/products/' . $newFileName;
                     copy($originalImagePath, public_path($newImagePath));
+                    $newImages[] = $newImagePath; // Thêm hình ảnh mới vào mảng
                 } else if (filter_var($originalProduct->image, FILTER_VALIDATE_URL)) {
                     $newImagePath = $originalProduct->image;
+                    $newImages[] = $newImagePath; // Thêm hình ảnh từ URL vào mảng
                 }
             }
 
             // Tạo sản phẩm mới
             $newProduct = $originalProduct->replicate();
             $newProduct->slug = $slug;
-            $newProduct->image = $newImagePath;
             $newProduct->save();
+
+            // Sao chép tất cả hình ảnh liên quan
+            foreach ($originalProduct->images as $image) {
+                $newProductImage = new ProductImage();
+                $newProductImage->product_id = $newProduct->id;
+                $newProductImage->image_url = $image->image_url; // Giữ nguyên URL hình ảnh
+                $newProductImage->save();
+            }
 
             return response()->json([
                 'success' => true,
@@ -1268,16 +1238,16 @@ class ProductController extends Controller
             $template = ProductTemplate::findOrFail($templateId);
 
             // Lấy dữ liệu từ dòng 3 trở đi (bỏ qua dòng template_id và header)
-            $sheetData = $worksheet->rangeToArray('A3:F' . $worksheet->getHighestRow(), null, true, true);
+            $sheetData = $worksheet->rangeToArray('A3:J' . $worksheet->getHighestRow(), null, true, true);
 
             $successCount = 0;
             $errors = [];
 
             foreach ($sheetData as $index => $row) {
                 try {
-                    // Kiểm tra dữ liệu bắt buộc (name, price, image)
-                    if (empty($row[0]) || empty($row[1]) || empty($row[2])) {
-                        throw new \Exception("Thiếu dữ liệu bắt buộc ở dòng " . ($index + 3));
+                    // Kiểm tra dữ liệu bắt buộc (name, image1)
+                    if (empty($row[0]) || empty($row[5])) {
+                        throw new \Exception("Thiếu dữ liệu bắt buộc (tên hoặc hình ảnh chính) ở dòng " . ($index + 3));
                     }
 
                     // Tạo slug
@@ -1291,13 +1261,27 @@ class ProductController extends Controller
 
                     // Xử lý hình ảnh
                     $mainImagePath = null;
-                    if (filter_var($row[2], FILTER_VALIDATE_URL)) {
-                        $mainImagePath = $row[2];
+                    $imageUrls = []; // Mảng lưu trữ nhiều hình ảnh
+
+                    // Lấy hình ảnh chính từ cột F (Image1)
+                    if (filter_var($row[5], FILTER_VALIDATE_URL)) {
+                        $mainImagePath = $row[5];
+                        $imageUrls[] = $mainImagePath;
                     } else {
-                        throw new \Exception("URL ảnh không hợp lệ ở dòng " . ($index + 3));
+                        throw new \Exception("URL ảnh chính không hợp lệ ở dòng " . ($index + 3));
+                    }
+
+                    // Lấy các hình ảnh phụ từ cột G đến J (Image2 đến Image5)
+                    for ($i = 6; $i <= 9; $i++) {
+                        if (!empty($row[$i]) && filter_var($row[$i], FILTER_VALIDATE_URL)) {
+                            $imageUrls[] = $row[$i];
+                        }
                     }
 
                     DB::beginTransaction();
+
+                    // Lấy giá từ template nếu không có giá trong file
+                    $price = !empty($row[1]) ? $row[1] : $template->base_price;
 
                     // Tạo sản phẩm
                     $product = Product::create([
@@ -1306,12 +1290,17 @@ class ProductController extends Controller
                         'seller_id' => Auth::id(),
                         'category_id' => $template->category_id,
                         'template_id' => $template->id,
-                        'price' => $row[1],
+                        'price' => $price,
                         'image' => $mainImagePath,
                         'description' => $row[3] ?? $template->description,
                         'stock' => $row[4] ?? 0,
                         'status' => 1,
                     ]);
+
+                    // Lưu nhiều hình ảnh
+                    foreach ($imageUrls as $imageUrl) {
+                        $product->images()->create(['image_url' => $imageUrl]);
+                    }
 
                     DB::commit();
                     $successCount++;
@@ -1360,7 +1349,8 @@ class ProductController extends Controller
             'template_id' => 'required|exists:product_templates,id',
             'name' => 'required|string|max:255',
             'price' => 'nullable|numeric|min:0',
-            'image' => 'required',
+            'images' => 'required|array',
+            'images.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'description' => 'nullable|string',
             'stock' => 'required|integer|min:0',
             'status' => 'required|in:0,1,2',
@@ -1380,19 +1370,6 @@ class ProductController extends Controller
                 $count++;
             }
 
-            // Xử lý hình ảnh với tên độc nhất
-            $mainImagePath = null;
-            if (filter_var($request->image, FILTER_VALIDATE_URL)) {
-                $mainImagePath = $request->image;
-            } elseif ($request->hasFile('image')) {
-                $mainImage = $request->file('image');
-                if ($mainImage->isValid()) {
-                    $mainImageName = $this->generateUniqueImageName($mainImage->getClientOriginalName());
-                    $mainImage->move(public_path('images/products'), $mainImageName);
-                    $mainImagePath = 'images/products/' . $mainImageName;
-                }
-            }
-
             // Tạo sản phẩm mới
             $product = Product::create([
                 'name' => $request->name,
@@ -1401,11 +1378,20 @@ class ProductController extends Controller
                 'category_id' => $template->category_id,
                 'template_id' => $template->id,
                 'price' => $request->price ?? $template->base_price,
-                'image' => $mainImagePath,
                 'description' => $request->description ?? $template->description,
                 'stock' => $request->stock,
                 'status' => $request->status,
             ]);
+
+            // Xử lý và lưu hình ảnh
+            foreach ($request->images as $image) {
+                $imageName = $this->generateUniqueImageName($image->getClientOriginalName());
+                $image->move(public_path('images/products'), $imageName);
+                $imageUrl = 'images/products/' . $imageName;
+
+                // Lưu hình ảnh vào bảng product_images
+                $product->images()->create(['image_url' => $imageUrl]);
+            }
 
             DB::commit();
 
@@ -1416,9 +1402,6 @@ class ProductController extends Controller
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            if (isset($mainImagePath) && file_exists(public_path($mainImagePath))) {
-                unlink(public_path($mainImagePath));
-            }
             return response()->json([
                 'success' => false,
                 'message' => 'Có lỗi xảy ra khi thêm sản phẩm từ template',
@@ -1446,6 +1429,9 @@ class ProductController extends Controller
                 },
                 'template' => function ($query) {
                     $query->select('id', 'name');
+                },
+                'images' => function ($query) {
+                    $query->select('id', 'product_id', 'image_url')->orderBy('created_at', 'asc'); // Sắp xếp theo ngày tạo
                 }
             ])
                 ->select([
@@ -1455,7 +1441,6 @@ class ProductController extends Controller
                     'seller_id',
                     'category_id',
                     'price',
-                    'image',
                     'template_id',
                     'status',
                     'stock',
@@ -1466,6 +1451,11 @@ class ProductController extends Controller
                 ->orderBy('created_at', 'desc');
 
             $products = $query->paginate($perPage)->withQueryString();
+
+            // Lấy ảnh chính là ảnh đầu tiên trong danh sách hình ảnh
+            foreach ($products as $product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy ảnh đầu tiên
+            }
 
             return response()->json([
                 'success' => true,

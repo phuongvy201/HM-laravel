@@ -20,7 +20,6 @@ class Product extends Model
         'slug',
         'description',
         'price',
-        'image',
         'status',
         'updated_by',
         'stock',
@@ -91,5 +90,13 @@ class Product extends Model
             DB::rollBack();
             throw $e;
         }
+    }
+    public function images()
+    {
+        return $this->hasMany(ProductImage::class, 'product_id', 'id');
+    }
+    public function productImages()
+    {
+        return $this->hasMany(ProductImage::class, 'product_id');
     }
 }
