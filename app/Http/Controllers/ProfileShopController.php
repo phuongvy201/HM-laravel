@@ -70,7 +70,12 @@ class ProfileShopController extends Controller
                         ->where('date_begin', '<=', now())
                         ->where('date_end', '>=', now());
                 },
-                'category'
+                'category',
+                'images' => function ($query) {
+                    $query->select('id', 'product_id', 'image_url', 'created_at')
+                        ->orderBy('created_at', 'asc');
+                }
+
             ])
                 ->where('seller_id', $sellerId)
                 ->where('status', 1)
@@ -103,6 +108,13 @@ class ProfileShopController extends Controller
 
             $products = $query->paginate($perPage);
 
+            // Lấy hình ảnh chính cho từng sản phẩm
+            $productsArray = $products->items(); // Lấy danh sách sản phẩm
+
+            foreach ($productsArray as $product) {
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh đầu tiên
+            }
+
             // Kiểm tra user hiện tại có follow shop này chưa
             $isFollowing = false;
             if (Auth::check()) {
@@ -112,24 +124,21 @@ class ProfileShopController extends Controller
             }
 
             // Nhóm sản phẩm theo danh mục để hiển thị
-            $categories = $products->items();
-
-            // Chuyển danh sách sản phẩm thành một collection để dễ thao tác
-            $categories = collect($categories)->groupBy(function ($item) {
+            $categories = collect($productsArray)->groupBy(function ($item) {
                 return $item['category']['name']; // Nhóm theo tên danh mục
             })->map(function ($group) {
                 // Thêm các thuộc tính khác từ danh mục
                 $firstItem = $group->first();
+                // Lấy hình ảnh đầu tiên từ mối quan hệ images
+                $firstImage = $firstItem->images->sortBy('created_at')->first(); // Lấy hình ảnh được tạo sớm nhất
                 return [
                     'slug' => $firstItem['category']['slug'],
                     'id' => $firstItem['category']['id'],
-                    'image' => $firstItem['category']['image'],
+                    'image' => $firstImage ? $firstImage->image_url : null, // Sử dụng hình ảnh đầu tiên
                     'products' => $group, // Danh sách sản phẩm trong nhóm
                     'name' => $firstItem['category']['name'], // Danh sách sản phẩm trong nhóm
                 ];
             });
-
-
 
             return response()->json([
                 'success' => true,

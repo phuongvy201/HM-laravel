@@ -256,3 +256,8 @@ Route::post('send-mail', [MailController::class, 'sendMail']);
 Route::post('submit-form', [BulkOrderController::class, 'store']);
 
 Route::apiResource('product-templates', ProductTemplateController::class);
+
+Route::get('/get-ip', function (Request $request) {
+    $ip = $request->ip(); // Lấy địa chỉ IP
+    return response()->json(['ip' => $ip]);
+});

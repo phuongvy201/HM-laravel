@@ -394,7 +394,7 @@ class ProductController extends Controller
                         ->where('date_end', '>=', now());
                 },
                 'images' => function ($query) {
-                    $query->orderBy('created_at', 'desc'); // Sắp xếp hình ảnh theo ngày tạo
+                    $query->orderBy('created_at', 'asc'); // Sắp xếp hình ảnh theo ngày tạo
                 }
             ])
                 ->select([
@@ -417,7 +417,7 @@ class ProductController extends Controller
 
             // Lấy hình ảnh mới nhất làm ảnh chính
             $products->transform(function ($product) {
-                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh mới nhất
+                $product->main_image = $product->images->first()->image_url ?? null; // Lấy hình ảnh đầu tiên
                 return $product;
             });
 
@@ -639,6 +639,9 @@ class ProductController extends Controller
             // Gộp chung hình ảnh
             $allImages = array_merge($productImages, $templateImages);
 
+            // Lấy ảnh chính (ảnh đầu tiên trong danh sách)
+            $mainImage = !empty($allImages) ? $allImages[0] : null;
+
             return response()->json([
                 'success' => true,
                 'message' => 'Lấy thông tin chi tiết sản phẩm thành công',
@@ -652,7 +655,8 @@ class ProductController extends Controller
                         'base_price' => $product->price,
                         'stock' => $product->stock,
                         'status' => $product->status,
-                        'images' => $allImages // Gộp chung hình ảnh
+                        'images' => $allImages, // Tất cả hình ảnh
+                        'main_image' => $mainImage // Thêm ảnh chính
                     ],
                     'template_info' => $product->template ? [
                         'id' => $product->template->id,
@@ -1501,4 +1505,8 @@ class ProductController extends Controller
         // Nối các tên danh mục bằng dấu ">"
         return implode(' > ', $hierarchy);
     }
+
+    /**
+     * Lấy sản phẩm theo từ khóa liên quan
+     */
 }

@@ -12,6 +12,8 @@ class PaymentTransaction extends Model
         'order_id',
         'amount',
         'currency',
+        'tip_amount',
+        'handling_fee',
         'status',
         'paypal_response'
     ];

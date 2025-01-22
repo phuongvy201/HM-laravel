@@ -58,6 +58,8 @@ class TestPaymentController extends Controller
                 'gateway_id' => 'required|exists:payment_gateways_test,id',
                 'paypal_order_id' => 'required|string|unique:payment_transactions,order_id',
                 'amount' => 'required|numeric|min:0.01',
+                'tip_amount' => 'nullable|numeric|min:0',
+                'handling_fee' => 'nullable|numeric|min:0',
                 'status' => 'required|in:PENDING,COMPLETED,CANCELLED,FAILED',
                 'error_code' => 'nullable|string'
             ]);
@@ -114,6 +116,8 @@ class TestPaymentController extends Controller
                 'gateway_id' => $gateway->id,
                 'paypal_order_id' => $request->paypal_order_id,
                 'amount' => $request->amount,
+                'tip_amount' => $request->tip_amount,
+                'handling_fee' => $request->handling_fee,   
                 'status' => $request->status,
                 'paypal_response' => $request->all()
             ]);

@@ -99,18 +99,35 @@ class OrderController extends Controller
     public function getCustomerOrders()
     {
         try {
-            // Lấy tất cả đơn hàng của khách hàng đang đăng nhập
-            $orders = Order::with(['orderDetails.product', 'seller'])
+            // Lấy tất cả đơn hàng của khách hàng đang đăng nhập kèm theo hình ảnh sản phẩm
+            $orders = Order::with([
+                'orderDetails.product.productImages' => function ($query) {
+                    $query->oldest()->limit(1); // Lấy ảnh đầu tiên được tạo
+                },
+                'seller'
+            ])
                 ->where('customer_id', Auth::id())
                 ->orderBy('created_at', 'desc')
-                ->get();
+                ->get()
+                ->map(function ($order) {
+                    // Xử lý và gán ảnh cho mỗi sản phẩm trong order details
+                    $order->orderDetails->map(function ($detail) {
+                        $detail->product->image = $detail->product->productImages->first()?->image_url;
+                        // Xóa collection productImages để giảm dung lượng response
+                        unset($detail->product->productImages);
+                        return $detail;
+                    });
+                    return $order;
+                });
 
             return response()->json([
+                'success' => true,
                 'message' => 'Lấy danh sách đơn hàng thành công',
                 'orders' => $orders
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Có lỗi xảy ra khi lấy danh sách đơn hàng',
                 'error' => $e->getMessage()
             ], 500);
@@ -120,9 +137,24 @@ class OrderController extends Controller
     {
         try {
             // Lấy tất cả đơn hàng từ hệ thống
-            $orders = Order::with(['orderDetails.product', 'shipping', 'seller', 'customer']) // Load các mối quan hệ nếu cần
-                ->orderBy('created_at', 'desc') // Sắp xếp theo ngày tạo
-                ->get();
+            $orders = Order::with([
+                'orderDetails.product.productImages' => function ($query) {
+                    $query->oldest()->limit(1); // Lấy ảnh được tạo sớm nhất
+                },
+                'shipping',
+                'seller',
+                'customer'
+            ])
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($order) {
+                    $order->orderDetails->map(function ($detail) {
+                        $detail->product->image = $detail->product->productImages->first()?->image_url;
+                        unset($detail->product->productImages);
+                        return $detail;
+                    });
+                    return $order;
+                });
 
             return response()->json([
                 'success' => true,
@@ -147,10 +179,20 @@ class OrderController extends Controller
             $user = Auth::user();
 
             // Lấy tất cả đơn hàng của seller đang đăng nhập
-            $orders = Order::with(['orderDetails.product', 'shipping', 'customer']) // Load các mối quan hệ nếu cần
+            $orders = Order::with(['orderDetails.product.productImages' => function ($query) {
+                $query->oldest()->limit(1); // Lấy ảnh được tạo sớm nhất
+            }, 'shipping', 'customer']) // Load các mối quan hệ nếu cần
                 ->where('seller_id', $seller_id) // Lọc theo seller_id của người dùng đang đăng nhập
                 ->orderBy('created_at', 'desc') // Sắp xếp theo ngày tạo
                 ->get();
+            $orders->map(function ($order) {
+                $order->orderDetails->map(function ($detail) {
+                    $detail->product->image = $detail->product->productImages->first()?->image_url;
+                    unset($detail->product->productImages);
+                    return $detail;
+                });
+                return $order;
+            });
 
             return response()->json([
                 'success' => true,
@@ -169,9 +211,15 @@ class OrderController extends Controller
     {
         try {
             // Lấy thông tin đơn hàng cùng với chi tiết đơn hàng, thông tin vận chuyển và sản phẩm
-            $order = Order::with(['orderDetails.product', 'shipping']) // Thêm 'product' vào mối quan hệ orderDetails
+            $order = Order::with(['orderDetails.product.productImages' => function ($query) {
+                $query->oldest()->limit(1); // Lấy ảnh được tạo sớm nhất
+            }, 'shipping']) // Thêm 'product' vào mối quan hệ orderDetails
                 ->findOrFail($orderId);
-
+            $order->orderDetails->map(function ($detail) {
+                $detail->product->image = $detail->product->productImages->first()?->image_url;
+                unset($detail->product->productImages);
+                return $detail;
+            });
             return response()->json([
                 'success' => true,
                 'message' => 'Lấy thông tin chi tiết đơn hàng thành công',

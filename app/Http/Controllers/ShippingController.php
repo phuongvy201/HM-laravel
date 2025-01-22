@@ -170,19 +170,20 @@ class ShippingController extends Controller
             return response()->json(['message' => 'Shipping record not found'], 404);
         }
 
-        // Kiểm tra và cập nhật hoặc thêm mới tracking number
-        if ($shipping->tracking_number) {
-            Log::info('Updating existing tracking number for Shipping ID: ' . $id);
-        } else {
-            Log::info('Adding new tracking number for Shipping ID: ' . $id);
-        }
+        // Cập nhật tracking number
         $shipping->tracking_number = $request->tracking_number;
         $shipping->save();
+
+        // Cập nhật status của Order thành 2
+        if ($shipping->order) {
+            $shipping->order->update(['status' => 2]);
+            Log::info('Updated Order status to 2 for Order ID: ' . $shipping->order->id);
+        }
 
         // Log kết quả lưu
         Log::info('Updated Shipping:', $shipping->toArray());
 
-        // Gửi email thông báo mã tracking
+        // Gửi email thông báo
         try {
             Mail::to('recipient@example.com')->send(new \App\Mail\TrackingMail($request->tracking_number));
             Log::info('Email sent successfully.');
@@ -196,7 +197,7 @@ class ShippingController extends Controller
         }
 
         return response()->json([
-            'message' => 'Tracking number updated and email sent successfully',
+            'message' => 'Tracking number and order status updated successfully',
             'data' => $shipping,
         ], 200);
     }
